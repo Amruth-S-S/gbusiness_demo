@@ -1,0 +1,48 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* :root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: Arial, Helvetica, sans-serif;
+} */
+
+
+/* Scrollbar Styles - Rectangular */
+*::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+*::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 0px; /* Rectangular track */
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 0px; /* Rectangular thumb */
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* Firefox */
+* {
+  /* scrollbar-width: thin; */
+  scrollbar-color: #888 #f1f1f1;
+}

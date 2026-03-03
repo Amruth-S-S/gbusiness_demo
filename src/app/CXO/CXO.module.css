@@ -1,0 +1,1104 @@
+.header {
+
+    display: flex;
+  
+    justify-content: space-between;
+  
+    align-items: center;
+  
+    padding: 1rem;
+  
+    background-color: #333;
+  
+    color: white;
+  
+  }
+  
+  
+  
+  .logo {
+  
+    font-size: 1.5rem;
+  
+    font-weight: bold;
+  
+  }
+  
+  
+  
+  /* Dashboard Container */
+  
+  .dashboardContainer {
+  
+    padding: 2rem;
+  
+  }
+  
+  
+  
+  /* Main Boards Grid */
+  
+  .mainboards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.5rem;
+  padding: 1rem;
+}
+  
+  
+  
+  /* Boards Container */
+.boardsContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 1rem;
+}
+  
+
+/* Breadcrumb Container */
+.breadcrumbContainer {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  padding: 0 1rem;
+  font-size: 1.1rem;
+}
+
+/* Breadcrumb Link */
+.breadcrumbLink {
+  color: #4299e1;
+  cursor: pointer;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+.breadcrumbLink:hover {
+  color: #3182ce;
+  text-decoration: underline;
+}
+
+/* Breadcrumb Separator */
+.breadcrumbSeparator {
+  color: #a0aec0;
+}
+
+/* Current Breadcrumb */
+.breadcrumbCurrent {
+  color: #4a5568;
+  font-weight: 600;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .breadcrumbContainer {
+    font-size: 1rem;
+    padding: 0 0.5rem;
+  }
+}
+  
+  
+  /* Boards Row */
+.boardsRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+  
+  
+  
+  /* Card Styling - Enhanced for larger containers */
+.card {
+  padding: 2rem 1.5rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: center;
+  min-height: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: white;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+  transition: all 0.3s ease;
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #2d3748;
+  position: relative;
+  overflow: hidden;
+}
+
+.card:hover {
+  background-color: #f7fafc;
+  transform: translateY(-5px);
+  box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
+  border-color: #cbd5e0;
+}
+
+.card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  /* background: linear-gradient(90deg, #4299e1, #667eea); */
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .mainboards,
+  .boardsRow {
+    grid-template-columns: 1fr;
+  }
+  
+  .card {
+    min-height: 140px;
+    padding: 1.5rem 1rem;
+    font-size: 1.1rem;
+  }
+  
+  .headerContainer {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .headerContainer h2 {
+    font-size: 1.5rem;
+  }
+}
+  
+  
+  
+  /* Back Button */
+  
+  .backButton {
+  
+    margin-bottom: 1rem;
+  
+    padding: 0.5rem 1rem;
+  
+    background-color: #007bff;
+  
+    color: white;
+  
+    border: none;
+  
+    border-radius: 4px;
+  
+    cursor: pointer;
+  
+  }
+  
+  
+  
+  .backButton:hover {
+  
+    background-color: #0056b3;
+  
+  }
+  
+  
+  
+  /* Modal Overlay */
+  
+  .modalOverlay {
+  
+    position: fixed;
+  
+    top: 0;
+  
+    left: 0;
+  
+    right: 0;
+  
+    bottom: 0;
+  
+    background-color: rgba(48, 64, 122, 0.5);
+  
+    display: flex;
+  
+    justify-content: center;
+  
+    align-items: center;
+  
+    z-index: 1000;
+  
+  }
+  
+  
+  
+  /* Modal */
+  
+  .modal {
+  
+    background-color: rgb(255, 255, 255);
+  
+    border-radius: 8px;
+  
+    width: 100%;
+  
+    /* max-width: 1980px; */
+  
+    /* max-height: 99vh; */
+  
+    height: 100%;
+  
+    overflow: hidden;
+  
+    display: flex;
+  
+    flex-direction: column;
+  
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  
+  }
+  
+  
+  
+  /* Prompts Modal */
+  
+  .promptsModal {
+  
+    background-color: white;
+  
+    border-radius: 8px;
+  
+    width: 90%;
+  
+    max-width: 600px;
+  
+    max-height: 90vh;
+  
+    overflow: hidden;
+  
+    display: flex;
+  
+    flex-direction: column;
+  
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  
+    position: fixed;
+  
+    top: 0;
+  
+    left: 0;
+  
+    bottom: 0;
+  
+    transform: translateX(-100%);
+  
+    transition: transform 0.3s ease-in-out;
+  
+  }
+  
+  
+  
+  .slideInLeft {
+  
+    transform: translateX(0);
+  
+  }
+  
+  
+  
+  /* Modal Header */
+  
+  .modalHeader {
+  
+    padding: 5px;
+  
+    display: flex;
+  
+    justify-content: space-between;
+  
+    align-items: center;
+  
+    border-bottom: 10px solid #eee;
+  
+    background-color: #f8f8f8;
+
+
+  
+  }
+  
+  
+  
+  .modalHeader h3 {
+  
+    margin: 0;
+  
+    font-size: 1.2rem;
+  
+  }
+  
+  
+  
+  .closeButton {
+  
+    background: none;
+  
+    border: none;
+  
+    font-size: 24px;
+  
+    cursor: pointer;
+  
+    color: #333;
+  
+  }
+  
+  
+  
+  /* Modal Content */
+  
+  .modalContent {
+  
+    padding: 10px;
+  
+    overflow-y: auto;
+  
+    flex-grow: 1;
+  
+    background-color: #f5f7fa;
+  
+  }
+  
+  
+  
+  /* View Prompts Button */
+  
+  .viewPromptsButton {
+  
+    padding: 0.5rem 1rem;
+  
+    background-color: #007bff;
+  
+    color: white;
+  
+    border: none;
+  
+    border-radius: 4px;
+  
+    cursor: pointer;
+  
+    margin: 1rem auto;
+  
+    display: block;
+  
+  }
+  
+  
+  
+  .viewPromptsButton:hover {
+  
+    background-color: #0056b3;
+  
+  }
+  
+  
+  
+  /* Prompt Container */
+  
+  .promptContainer {
+  
+    display: flex;
+  
+    flex-direction: column;
+  
+    gap: 1rem;
+  
+  }
+  
+  
+  
+  .promptNavigation {
+  
+    display: flex;
+  
+    justify-content: space-between;
+  
+    margin-bottom: 1rem;
+  
+  }
+  
+  
+  
+  .navButton {
+  
+    padding: 0.5rem 1rem;
+  
+    background-color: #007bff;
+  
+    color: white;
+  
+    border: none;
+  
+    border-radius: 4px;
+  
+    cursor: pointer;
+  
+  }
+  
+  
+  
+  .navButton:disabled {
+  
+    background-color: #ccc;
+  
+    cursor: not-allowed;
+  
+  }
+  
+  
+  
+  .promptContent {
+  
+    padding: 1rem;
+  
+    background-color: white;
+  
+    border-radius: 10px;
+  
+    border: 1px solid #eee;
+  
+  }
+  
+  
+  
+  .promptContent h4 {
+  
+    margin: 0 0 1rem 0;
+  
+    font-size: 1.2rem;
+  
+  }
+  
+  
+  
+  .promptContent p {
+  
+    margin: 0;
+  
+    font-size: 1rem;
+  
+    line-height: 1.5;
+  
+  }
+  
+  
+  
+  .promptUser {
+  
+    margin-top: 1rem;
+  
+    font-size: 0.875rem;
+  
+    color: #666;
+  
+  }
+  
+  
+  
+  .promptDate {
+  
+    margin-top: 0.5rem;
+  
+    font-size: 0.875rem;
+  
+    color: #999;
+  
+  }
+  
+  
+  
+  /* Loading Overlay */
+  
+  .loadingOverlay {
+  
+    display: flex;
+  
+    justify-content: center;
+  
+    align-items: center;
+  
+    height: 10rem;
+  
+  }
+  
+  
+  
+  .spinner {
+  
+    border: 4px solid #d1d5db;
+  
+    border-top-color: #3b82f6;
+  
+    border-radius: 50%;
+  
+    width: 2.5rem;
+  
+    height: 2.5rem;
+  
+    animation: spin 1s linear infinite;
+  
+  }
+  
+  
+  
+  @keyframes spin {
+  
+    to {
+  
+      transform: rotate(360deg);
+  
+    }
+  
+  }
+  
+  
+  
+  /* Error Message */
+  
+  .error {
+  
+    color: red;
+  
+    margin: 10px 0;
+  
+  }
+
+  /* Search Container */
+.searchContainer {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-right: 10px;
+  flex: 1;
+  max-width: 300px;
+}
+
+.searchInput {
+  width: 100%;
+  padding: 8px 12px;
+  padding-right: 30px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.clearSearchButton {
+  position: absolute;
+  right: 8px;
+  background: none;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  color: #999;
+}
+
+.clearSearchButton:hover {
+  color: #333;
+}
+
+/* Search Results Info */
+.searchResultsInfo {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 15px;
+  background-color: #f5f5f5;
+  border-bottom: 1px solid #eee;
+  font-size: 14px;
+  color: #666;
+}
+
+.clearSearchLink {
+  background: none;
+  border: none;
+  color: #007bff;
+  cursor: pointer;
+  font-size: 14px;
+  text-decoration: underline;
+}
+
+.clearSearchLink:hover {
+  color: #0056b3;
+}
+
+/* No Results */
+.noResults {
+  text-align: center;
+  padding: 40px 20px;
+  color: #666;
+}
+
+/* Modal Header Layout */
+.modalHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 20px;
+  border-bottom: 1px solid #eee;
+  background-color: #f9f9f9;
+}
+
+.modalHeader h3 {
+  margin: 0;
+  margin-right: 15px;
+}
+
+/* Responsive Design */
+@media (max-width: 2000px) {
+  .searchContainer {
+    max-width: 600px;
+  }
+  
+  .modalHeader {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  
+  .modalHeader h3 {
+    flex-basis: 100%;
+  }
+}
+  
+  
+  
+  /* Input Field */
+  
+  .inputField {
+  
+    width: 100%;
+  
+    padding: 10px;
+  
+    border: 1px solid #ccc;
+  
+    border-radius: 4px;
+  
+    font-size: 1rem;
+  
+    resize: vertical;
+  
+    min-height: 150px;
+  
+  }
+  
+  
+  
+  /* Action Buttons */
+  
+  .actionButtons {
+  
+    display: flex;
+  
+    justify-content: space-between;
+  
+    /* margin-top: 20px; */
+  
+  }
+  
+  
+  
+  .viewPromptsButton,
+  
+  .runButton {
+  
+    padding: 10px 20px;
+  
+    background-color: #007bff;
+  
+    color: white;
+  
+    border: none;
+  
+    /* border-radius: 4px;
+  
+    cursor: pointer;
+  
+    font-size: 1rem; */
+  
+  }
+  
+  
+  
+  .viewPromptsButton:hover,
+  
+  .runButton:hover {
+  
+    background-color: #0056b3;
+  
+  }
+  
+  
+  
+  .runButton:disabled {
+  
+    background-color: #ccc;
+  
+    cursor: not-allowed;
+  
+  }
+  
+  
+  
+  /* Prompts Modal */
+  
+  .promptsModal {
+  
+    background-color: white;
+  
+    border-radius: 8px;
+  
+    width: 90%;
+  
+    max-width: 600px;
+  
+    max-height: 100vh;
+  
+    overflow: hidden;
+  
+    display: flex;
+  
+    flex-direction: column;
+  
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  
+    position: fixed;
+  
+    top: 0;
+  
+    left: 0;
+  
+    bottom: 0;
+  
+    transform: translateX(-100%);
+  
+    transition: transform 0.3s ease-in-out;
+  
+  }
+  
+  
+  
+  .slideInLeft {
+  
+    transform: translateX(0);
+  
+  }
+  
+  
+  
+  /* Prompt Container */
+  
+  .promptContainer {
+  
+    display: flex;
+  
+    flex-direction: column;
+  
+    gap: 20px;
+  
+  }
+  
+  
+  
+  .promptNavigation {
+  
+    display: flex;
+  
+    justify-content: space-between;
+  
+    margin-bottom: 20px;
+  
+  }
+  
+  
+  
+  .navButton {
+  
+    padding: 10px 20px;
+  
+    background-color: #007bff;
+  
+    color: white;
+  
+    border: none;
+  
+    border-radius: 4px;
+  
+    cursor: pointer;
+  
+  }
+  
+  
+  
+  .navButton:disabled {
+  
+    background-color: #ccc;
+  
+    cursor: not-allowed;
+  
+  }
+  
+  
+  
+  .promptContent {
+  
+    padding: 20px;
+  
+    background-color: white;
+  
+    border-radius: 8px;
+  
+    border: 1px solid #eee;
+  
+  }
+  
+  
+  
+  .promptContent h4 {
+  
+    margin: 0 0 10px 0;
+  
+    font-size: 1.2rem;
+  
+  }
+  
+  
+  
+  .promptContent p {
+  
+    margin: 0;
+  
+    font-size: 1rem;
+  
+    line-height: 1.5;
+  
+  }
+  
+  
+  
+  .promptUser {
+  
+    margin-top: 10px;
+  
+    font-size: 0.875rem;
+  
+    color: #666;
+  
+  }
+  
+  
+  
+  .promptDate {
+  
+    margin-top: 5px;
+  
+    font-size: 0.875rem;
+  
+    color: #999;
+  
+  }
+  
+  
+  
+  .usePromptButton {
+  
+    padding: 10px 20px;
+  
+    background-color: #28a745;
+  
+    color: white;
+  
+    border: none;
+  
+    border-radius: 4px;
+  
+    cursor: pointer;
+  
+    font-size: 1rem;
+  
+  }
+  
+  
+  
+  .usePromptButton:hover {
+  
+    background-color: #218838;
+  
+  }
+  
+  
+  
+  /* Loading Overlay */
+  
+  .loadingOverlay {
+  
+    display: flex;
+  
+    justify-content: center;
+  
+    align-items: center;
+  
+    height: 10rem;
+  
+  }
+  
+  
+  
+  .spinner {
+  
+    border: 4px solid #d1d5db;
+  
+    border-top-color: #3b82f6;
+  
+    border-radius: 50%;
+  
+    width: 2.5rem;
+  
+    height: 2.5rem;
+  
+    animation: spin 1s linear infinite;
+  
+  }
+  
+  
+  
+  
+  
+  /* Scrollable Prompts Container */
+  
+  .scrollablePrompts {
+  
+    max-height: 500px; /* Adjust height as needed */
+  
+    overflow-y: auto; /* Enable vertical scrolling */
+  
+    padding: 10px;
+  
+    border: 1px solid #eee;
+  
+    border-radius: 8px;
+  
+    background-color: #f9f9f9;
+  
+  }
+  
+  
+  
+  /* Prompt Card */
+  
+  .promptCard {
+  
+    padding: 15px;
+  
+    margin-bottom: 10px;
+  
+    border: 1px solid #ddd;
+  
+    border-radius: 8px;
+  
+    background-color: white;
+  
+    cursor: pointer;
+  
+    transition: background-color 0.3s ease;
+  
+  }
+  
+  
+  
+  .promptCard:hover {
+  
+    background-color: #f0f0f0;
+  
+  }
+  
+  
+  
+  /* Prompt Number */
+  
+  .promptNumber {
+  
+    font-size: 1rem;
+  
+    font-weight: bold;
+  
+    color: #007bff; /* Blue color for the number */
+  
+    margin-bottom: 10px;
+  
+  }
+  
+  
+  
+  .promptCard h4 {
+  
+    margin: 0 0 10px 0;
+  
+    font-size: 1.1rem;
+  
+    color: #333;
+  
+  }
+  
+  
+  
+  .promptCard p {
+  
+    margin: 0;
+  
+    font-size: 0.9rem;
+  
+    color: #666;
+  
+  }
+  
+  
+  
+  .promptUser {
+  
+    margin-top: 10px;
+  
+    font-size: 0.8rem;
+  
+    color: #888;
+  
+  }
+  
+  
+  
+  .promptDate {
+  
+    margin-top: 5px;
+  
+    font-size: 0.8rem;
+  
+    color: #aaa;
+  
+  }
+  
+  @keyframes spin {
+  
+    to {
+  
+      transform: rotate(360deg);
+  
+    }
+  
+  }
+  
+  
+  
+  /* Error Message */
+  
+  .error {
+  
+    color: red;
+  
+    margin: 10px 0;
+  
+  }

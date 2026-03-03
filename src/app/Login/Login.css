@@ -1,0 +1,713 @@
+body, html {
+    margin: 0;
+    padding: 0;
+    font-family: Arial, sans-serif;
+    height: 100%;
+    width: 100%;
+    overflow-x: hidden;
+}
+
+.login-page {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    margin: 0;
+    padding: 0;
+}
+
+.image-section {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100vw;
+    height: 100vh;
+    background-image: url('./image.jpg');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.overlay {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 50%;
+    background: rgba(0, 47, 108, 0.7);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    box-sizing: border-box;
+    text-align: center;
+}
+
+.overlay h1 {
+    color: white;
+    font-size: 2.5rem;
+    line-height: 1.2;
+    margin-bottom: 200px;
+    margin-left: -500px;
+    font-style: inherit;
+}
+
+.overlay h1 span {
+    color: #f8f9f9;
+    font-style: italic;
+}
+
+.form-container {
+    height: auto;
+    max-height: 90vh;
+    min-height: 600px;
+    margin-left: -500px;
+    max-width: 450px;
+    width: 100%;
+    background: #fff;
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    text-align: center;
+    margin-top: -100px;
+    position: absolute;
+    right: 200px;
+    top: 30%;
+    transform: translateY(-50%);
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+/* Custom Scrollbar for form container */
+.form-container::-webkit-scrollbar {
+    width: 8px;
+}
+
+.form-container::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+
+.form-container::-webkit-scrollbar-thumb {
+    background: #313b96;
+    border-radius: 10px;
+}
+
+.form-container::-webkit-scrollbar-thumb:hover {
+    background: #252d7a;
+}
+
+.form-container .logo {
+    max-width: 150px;
+    margin-bottom: 20px;
+}
+
+.form-container h2 {
+    font-size: 1.5rem;
+    margin-bottom: 20px;
+}
+
+.input-group {
+    position: relative;
+    margin-bottom: 15px;
+}
+
+.input-group label {
+    display: block;
+    font-size: 0.9rem;
+    margin-bottom: 5px;
+    text-align: left;
+}
+
+.input-group input {
+    width: 100%;
+    padding: 10px;
+    padding-right: 40px;
+    font-size: 1rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    line-height: 1.5;
+    box-sizing: border-box;
+}
+
+.input-group i {
+    position: absolute;
+    right: 10px;
+    top: 70%;
+    transform: translateY(-50%);
+    font-size: 1.2rem;
+    color: #999;
+    cursor: pointer;
+}
+
+.forgot-password {
+    text-align: right;
+    margin-bottom: 20px;
+}
+
+.forgot-password a {
+    text-decoration: none;
+    color: #007bff;
+}
+
+.forgot-password a:hover {
+    text-decoration: underline;
+}
+
+button[type="submit"] {
+    width: 100%;
+    padding: 10px;
+    background: #313b96;
+    border: none;
+    color: white;
+    font-size: 1rem;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+button[type="submit"]:hover {
+    background: #313b96;
+}
+
+.footer {
+    text-align: center;
+    padding: 10px 0;
+    background-color: white;
+}
+
+.footer p {
+    margin: 0;
+    font-size: 0.8rem;
+    color: #666;
+}
+
+.logo {
+    width: 900px;
+    color: #187be4;
+}
+
+.form-container button[type="submit"],
+.form-container button[type="button"] {
+    width: 100%;
+    padding: 10px;
+    background: #313b96;
+    border: none;
+    color: white;
+    font-size: 1rem;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.form-container button[type="submit"]:hover,
+.form-container button[type="button"]:hover {
+    background: #313b96;
+}
+
+/* Tab Navigation */
+.tab-navigation {
+    display: flex;
+    margin-bottom: 20px;
+    border-bottom: 1px solid #ddd;
+}
+
+.tab-button {
+    flex: 1;
+    padding: 12px 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-weight: bold;
+    color: #666;
+    position: relative;
+}
+
+.tab-button.active {
+    color: #313b96;
+}
+
+.tab-button.active::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    width: 100%;
+    height: 3px;
+    background-color: #313b96;
+}
+
+/* Signup Form Styles */
+.input-group select {
+    width: 100%;
+    padding: 12px 15px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    margin-bottom: 15px;
+    box-sizing: border-box;
+}
+
+.already-have-account {
+    text-align: center;
+    margin-top: 15px;
+    color: #666;
+}
+
+/* Two Column Form Styles */
+.two-column-form {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    width: 100%;
+}
+
+.form-row {
+    display: flex;
+    gap: 15px;
+    width: 100%;
+}
+
+.form-row.single-field {
+    justify-content: center;
+}
+
+.form-row.single-field .input-group {
+    width: 50%;
+}
+
+.input-group {
+    flex: 1;
+    margin-bottom: 0;
+}
+
+.input-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 500;
+    color: #333;
+}
+
+.input-group input,
+.input-group select {
+    width: 100%;
+    padding: 12px 15px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    box-sizing: border-box;
+}
+
+.create-account-btn {
+    width: 100%;
+    padding: 12px;
+    background-color: #313b96;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-weight: bold;
+    margin-top: 20px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.create-account-btn:hover {
+    background-color: #252d7a;
+}
+
+.create-account-btn:disabled {
+    background-color: #cccccc;
+    cursor: not-allowed;
+}
+
+/* Compact Form Styles */
+.compact-form {
+    width: 100%;
+    max-width: 400px;
+    margin: 0 auto;
+}
+
+.tab-nav {
+    display: flex;
+    margin-bottom: 20px;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.tab-btn {
+    flex: 1;
+    padding: 10px 0;
+    background: none;
+    border: none;
+    font-weight: 600;
+    color: #666;
+    cursor: pointer;
+    position: relative;
+}
+
+.tab-btn.active {
+    color: #313b96;
+}
+
+.tab-btn.active::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background-color: #313b96;
+}
+
+.form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 15px;
+}
+
+.form-group {
+    margin-bottom: 0;
+}
+
+.form-group.full-width {
+    grid-column: span 2;
+}
+
+.form-group label {
+    display: block;
+    font-size: 12px;
+    color: #0a0909;
+    margin-bottom: 4px;
+    font-weight: 500;
+    text-align: left;
+    padding-left: 2px;
+}
+
+.form-group input,
+.form-group select {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 13px;
+    box-sizing: border-box;
+}
+
+.password-input {
+    position: relative;
+}
+
+.password-input i {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #777;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.confirm-password-input {
+    position: relative;
+}
+
+.confirm-password-input i {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #777;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.submit-btn {
+    width: 100%;
+    padding: 10px;
+    background-color: #313b96;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 600;
+    margin-top: 10px;
+    cursor: pointer;
+}
+
+.switch-auth {
+    text-align: center;
+    font-size: 12px;
+    color: #666;
+    margin-top: 15px;
+}
+
+.switch-auth span {
+    color: #313b96;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+/* Spinner overlay */
+.spinner-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+}
+
+/* OTP and other form containers */
+.otp-phone-screen,
+.forgot-password-container {
+    padding: 20px;
+}
+
+/* ================================
+   MOBILE RESPONSIVE STYLES
+   ================================ */
+
+/* Tablets and smaller devices (768px and below) */
+@media screen and (max-width: 768px) {
+    .overlay h1 {
+        font-size: 1.8rem;
+        margin-left: 0;
+        margin-bottom: 50px;
+    }
+
+    .form-container {
+        position: relative;
+        right: auto;
+        left: auto;
+        top: auto;
+        transform: none;
+        margin: 20px auto;
+        max-width: 90%;
+        min-height: auto;
+        max-height: 85vh;
+        padding: 25px;
+    }
+
+    .image-section {
+        position: relative;
+        height: auto;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .overlay {
+        position: relative;
+        height: auto;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-start;
+        padding-top: 40px;
+    }
+
+    .form-row {
+        flex-direction: column;
+        gap: 0;
+    }
+
+    .form-row .input-group {
+        margin-bottom: 15px;
+    }
+
+    .form-row.single-field .input-group {
+        width: 100%;
+    }
+
+    .form-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .form-group.full-width {
+        grid-column: span 1;
+    }
+}
+
+/* Mobile devices (480px and below) */
+@media screen and (max-width: 480px) {
+    .overlay h1 {
+        font-size: 1.5rem;
+        margin-bottom: 30px;
+        padding: 0 10px;
+    }
+
+    .form-container {
+        max-width: 95%;
+        padding: 20px 15px;
+        margin: 15px auto;
+        max-height: 80vh;
+        box-shadow: 0 1px 5px rgba(0, 0, 0, 0.1);
+    }
+
+    .form-container .logo {
+        max-width: 120px;
+        margin-bottom: 15px;
+    }
+
+    .form-container h2,
+    .form-container h3 {
+        font-size: 1.3rem;
+        margin-bottom: 15px;
+    }
+
+    .input-group {
+        margin-bottom: 12px;
+    }
+
+    .input-group label,
+    .form-group label {
+        font-size: 0.85rem;
+    }
+
+    .input-group input,
+    .input-group select,
+    .form-group input,
+    .form-group select {
+        padding: 10px;
+        font-size: 14px;
+    }
+
+    .tab-button,
+    .tab-btn {
+        padding: 10px 0;
+        font-size: 14px;
+    }
+
+    button[type="submit"],
+    .submit-btn,
+    .create-account-btn {
+        padding: 12px;
+        font-size: 15px;
+    }
+
+    .form-grid {
+        gap: 10px;
+    }
+
+    .footer p {
+        font-size: 0.75rem;
+    }
+
+    .switch-auth,
+    .already-have-account {
+        font-size: 11px;
+    }
+
+    /* OTP Input adjustments for mobile */
+    .form-container div[style*="minWidth: 480px"] {
+        min-width: auto !important;
+        max-width: 100% !important;
+        padding: 20px 15px !important;
+    }
+
+    /* Adjust OTP input boxes for mobile */
+    .form-container input[id^="otp-input-"] {
+        width: 45px !important;
+        height: 45px !important;
+        font-size: 20px !important;
+    }
+
+    .form-container div[style*="gap: 12px"] {
+        gap: 8px !important;
+    }
+}
+
+/* Very small mobile devices (360px and below) */
+@media screen and (max-width: 360px) {
+    .overlay h1 {
+        font-size: 1.3rem;
+    }
+
+    .form-container {
+        padding: 15px 12px;
+        max-height: 75vh;
+    }
+
+    .form-container h2,
+    .form-container h3 {
+        font-size: 1.2rem;
+    }
+
+    .input-group input,
+    .input-group select,
+    .form-group input,
+    .form-group select {
+        padding: 8px;
+        font-size: 13px;
+    }
+
+    button[type="submit"],
+    .submit-btn,
+    .create-account-btn {
+        padding: 10px;
+        font-size: 14px;
+    }
+
+    /* Smaller OTP boxes for very small screens */
+    .form-container input[id^="otp-input-"] {
+        width: 40px !important;
+        height: 40px !important;
+        font-size: 18px !important;
+    }
+
+    .form-container div[style*="gap: 12px"],
+    .form-container div[style*="gap: 8px"] {
+        gap: 6px !important;
+    }
+}
+
+/* Landscape orientation adjustments for mobile */
+@media screen and (max-height: 500px) and (orientation: landscape) {
+    .image-section {
+        min-height: 100vh;
+    }
+
+    .overlay {
+        min-height: 100vh;
+        padding: 20px 10px;
+    }
+
+    .overlay h1 {
+        font-size: 1.2rem;
+        margin-bottom: 20px;
+    }
+
+    .form-container {
+        margin: 10px auto;
+        padding: 15px;
+        max-height: 90vh;
+    }
+}
+
+/* Additional responsive fixes for centered forms */
+@media screen and (max-width: 768px) {
+    .form-container {
+        left: 50%;
+        right: auto;
+        transform: translateX(-50%);
+    }
+}
+
+@media screen and (max-width: 480px) {
+    .form-container {
+        left: 50%;
+        right: auto;
+        transform: translateX(-50%);
+    }
+}
