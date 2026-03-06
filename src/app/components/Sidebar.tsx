@@ -64,7 +64,7 @@ interface UserData {
 const GlobalLoader = ({ message = "Loading..." }: { message?: string }) => (
   <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
     <div className="flex flex-col items-center justify-center">
-      <div className="relative w-24 h-24">
+      <div className="relative w-20 h-20">
         {Array.from({ length: 12 }).map((_, i) => {
           const angle = (i / 12) * 360;
           const rad = (angle * Math.PI) / 180;
@@ -73,7 +73,7 @@ const GlobalLoader = ({ message = "Loading..." }: { message?: string }) => (
           return (
             <div
               key={i}
-              className="absolute w-2.5 h-2.5 rounded-full bg-white"
+              className="absolute w-2 h-2 rounded-full bg-white"
               style={{
                 left: `${x}%`,
                 top: `${y}%`,
@@ -86,7 +86,7 @@ const GlobalLoader = ({ message = "Loading..." }: { message?: string }) => (
           );
         })}
       </div>
-      <p className="mt-4 text-white text-base font-medium tracking-wide animate-pulse">
+      <p className="mt-3 text-white text-sm font-medium tracking-wide animate-pulse">
         {message}
       </p>
     </div>
@@ -103,7 +103,7 @@ const GlobalLoader = ({ message = "Loading..." }: { message?: string }) => (
 // ─── Main Sidebar Component ─────────────────────────────────────────────────────
 const Sidebar: React.FC<SidebarProps> = ({ }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [sidebarWidth, setSidebarWidth] = useState(320);
+  const [sidebarWidth, setSidebarWidth] = useState(260);   // ← reduced from 320
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef(null);
   const [userRole, setUserRole] = useState<string | null>(null);
@@ -165,7 +165,6 @@ const Sidebar: React.FC<SidebarProps> = ({ }) => {
   const hideGlobalLoader = () => setGlobalLoading(false);
 
   const [deletingBoards, setDeletingBoards] = useState<{ [key: string]: boolean }>({});
-
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -232,7 +231,7 @@ const Sidebar: React.FC<SidebarProps> = ({ }) => {
       const mobile = window.innerWidth <= 768;
       setIsMobile(mobile);
       if (mobile) { setIsSidebarOpen(false); setSidebarWidth(0); }
-      else { setIsSidebarOpen(true); setSidebarWidth(320); setIsMobileMenuOpen(false); }
+      else { setIsSidebarOpen(true); setSidebarWidth(260); setIsMobileMenuOpen(false); }
     };
     checkMobile();
     window.addEventListener('resize', checkMobile);
@@ -401,7 +400,7 @@ const Sidebar: React.FC<SidebarProps> = ({ }) => {
 
   // ─── Sidebar resize ───────────────────────────────────────────────────────────
   const toggleSidebar = () => {
-    const newWidth = sidebarWidth > 100 ? 80 : 320;
+    const newWidth = sidebarWidth > 100 ? 64 : 260;
     setSidebarWidth(newWidth);
     setIsSidebarOpen(newWidth > 100);
   };
@@ -412,7 +411,7 @@ const Sidebar: React.FC<SidebarProps> = ({ }) => {
     document.addEventListener('mouseup', stopResizing);
   };
   const handleMouseMove = (e: { clientX: number }) => {
-    if (isResizing && e.clientX >= 80 && e.clientX <= 400) {
+    if (isResizing && e.clientX >= 64 && e.clientX <= 360) {
       setSidebarWidth(e.clientX); setIsSidebarOpen(e.clientX > 100);
     }
   };
@@ -427,7 +426,6 @@ const Sidebar: React.FC<SidebarProps> = ({ }) => {
   }, [isResizing]);
 
   // ─── Init ─────────────────────────────────────────────────────────────────────
-  // ✅ FIX: sessionStorage access is safely inside useEffect — never called at render time
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
@@ -437,7 +435,6 @@ const Sidebar: React.FC<SidebarProps> = ({ }) => {
         setUserRole(d.userRole);
         setClientUserId(d.userId);
       } else {
-        // Fallback to localStorage
         const id = localStorage.getItem('loggedInUserId');
         const role = localStorage.getItem('loggedInUserRole');
         if (id) setClientUserId(id);
@@ -588,10 +585,10 @@ const Sidebar: React.FC<SidebarProps> = ({ }) => {
   // ─── Delete Board ─────────────────────────────────────────────────────────────
   const handleDelete = async (boardId: string, mainBoardId: string, boardName: string) => {
     const ConfirmToast = ({ closeToast }: { closeToast: () => void }) => (
-      <div className="p-4 bg-white rounded-lg shadow-lg">
-        <p className="text-gray-800 mb-4">Are you sure you want to delete <strong>{boardName}</strong>?</p>
+      <div className="p-3 bg-white rounded-lg shadow-lg">
+        <p className="text-gray-800 text-sm mb-3">Are you sure you want to delete <strong>{boardName}</strong>?</p>
         <div className="flex justify-end space-x-2">
-          <button onClick={() => closeToast()} className="px-4 py-2 bg-gray-200 text-gray-800 hover:bg-gray-300 rounded">Cancel</button>
+          <button onClick={() => closeToast()} className="px-3 py-1.5 text-sm bg-gray-200 text-gray-800 hover:bg-gray-300 rounded">Cancel</button>
           <button
             onClick={async () => {
               closeToast();
@@ -622,7 +619,7 @@ const Sidebar: React.FC<SidebarProps> = ({ }) => {
                 toast.error(error instanceof Error ? error.message : "An error occurred while deleting the board.");
               } finally { hideGlobalLoader(); }
             }}
-            className="px-4 py-2 bg-red-500 text-white hover:bg-red-600 rounded"
+            className="px-3 py-1.5 text-sm bg-red-500 text-white hover:bg-red-600 rounded"
           >Delete</button>
         </div>
       </div>
@@ -671,15 +668,11 @@ const Sidebar: React.FC<SidebarProps> = ({ }) => {
         setNewBoardName(boardData.name);
         setCustomerDbKey(boardDetails.customer_db_key || '');
       } else {
-        toast.error('Failed to load board details');
-        return;
+        toast.error('Failed to load board details'); return;
       }
     } catch {
-      toast.error('Error loading board details');
-      return;
-    } finally {
-      hideGlobalLoader();
-    }
+      toast.error('Error loading board details'); return;
+    } finally { hideGlobalLoader(); }
 
     setShowModal(true);
   };
@@ -696,8 +689,6 @@ const Sidebar: React.FC<SidebarProps> = ({ }) => {
     fetch(url, { headers: { Accept: "application/json", "X-API-Key": EXCEL_API_KEY } })
       .then(res => { if (!res.ok) throw new Error("Failed to fetch"); return res.json(); });
 
-  // ✅ FIX: Use clientUserId STATE (set safely in useEffect) instead of calling
-  // sessionStorage directly at render time. This is the root cause of the build error.
   const { mutate: mutateNavItems } = useSWR(
     clientUserId ? `${API_BASE_URL}/main-boards/get_all_info_tree?user_id=${clientUserId}` : null,
     fetcher,
@@ -718,7 +709,6 @@ const Sidebar: React.FC<SidebarProps> = ({ }) => {
   };
 
   const handleLogout = () => { closeMobileMenu(); router.push('/'); };
-
   const handleBoardClick = (boardId: string) => { setActiveBoardId(boardId); closeMobileMenu(); };
 
   // ─── Highlight search match ───────────────────────────────────────────────────
@@ -733,8 +723,8 @@ const Sidebar: React.FC<SidebarProps> = ({ }) => {
       {globalLoading && <GlobalLoader message={globalLoadingMessage} />}
 
       {isMobile && (
-        <button onClick={toggleMobileMenu} className="fixed top-4 left-4 z-50 p-3 bg-blue-600 text-white rounded-lg shadow-lg hover:bg-blue-700 transition-colors" aria-label="Toggle menu">
-          {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+        <button onClick={toggleMobileMenu} className="fixed top-3 left-3 z-50 p-2 bg-blue-600 text-white rounded-lg shadow-lg hover:bg-blue-700 transition-colors" aria-label="Toggle menu">
+          {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
       )}
 
@@ -747,8 +737,8 @@ const Sidebar: React.FC<SidebarProps> = ({ }) => {
           position: isMobile ? 'fixed' : 'relative',
           left: isMobile ? (isMobileMenuOpen ? 0 : '-100%') : 0,
           top: isMobile ? 0 : 'auto',
-          width: isMobile ? '85%' : `${sidebarWidth}px`,
-          maxWidth: isMobile ? '320px' : 'none',
+          width: isMobile ? '80%' : `${sidebarWidth}px`,
+          maxWidth: isMobile ? '280px' : 'none',
           zIndex: isMobile ? 45 : 'auto',
           transition: isMobile ? 'left 0.3s ease-in-out' : 'width 0.3s',
         }}
@@ -756,23 +746,23 @@ const Sidebar: React.FC<SidebarProps> = ({ }) => {
         <ToastContainer position="top-center" autoClose={3000} hideProgressBar={false} newestOnTop closeOnClick rtl={false} pauseOnFocusLoss draggable={false} pauseOnHover className="z-50" />
 
         {/* ── Header ────────────────────────────────────────────────────────── */}
-        <div className="relative bg-white border-b border-blue-500/50 shadow-lg">
-          <div className="p-4 flex justify-between items-center">
+        <div className="relative bg-white border-b border-blue-500/50 shadow-md">
+          <div className="px-3 py-2.5 flex justify-between items-center">
             {(isSidebarOpen || isMobile) && (
               <div className="relative group flex-1 min-w-0">
                 {currentLogo ? (
                   <div className="relative">
-                    <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 border border-blue-400/20">
-                      <img src={currentLogo} alt="Logo" width={120} height={40} className="object-contain max-h-10" onError={() => setCurrentLogo(null)} />
+                    <div className="bg-white/10 backdrop-blur-sm rounded-lg p-2 border border-blue-400/20">
+                      <img src={currentLogo} alt="Logo" width={100} height={32} className="object-contain max-h-8" onError={() => setCurrentLogo(null)} />
                     </div>
-                    <button onClick={() => setIsLogoModalOpen(true)} className="absolute -top-1 -right-1 p-1.5 bg-blue-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-blue-500 hover:scale-110 shadow-lg">
-                      <Edit3 className="w-3 h-3" />
+                    <button onClick={() => setIsLogoModalOpen(true)} className="absolute -top-1 -right-1 p-1 bg-blue-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-blue-500 shadow-md">
+                      <Edit3 className="w-2.5 h-2.5" />
                     </button>
                   </div>
                 ) : (
-                  <div className="flex items-center justify-center w-[140px] h-[50px] border-2 border-dashed border-blue-400/40 rounded-xl bg-blue-800/30 hover:bg-blue-700/40 transition-colors group">
+                  <div className="flex items-center justify-center w-[120px] h-[42px] border-2 border-dashed border-blue-400/40 rounded-lg bg-blue-800/30 hover:bg-blue-700/40 transition-colors group">
                     <button onClick={() => setIsLogoModalOpen(true)} className="flex flex-col items-center text-black transition-colors">
-                      <Upload className="w-5 h-5 mb-1" />
+                      <Upload className="w-4 h-4 mb-0.5" />
                       <span className="text-xs font-medium">Upload Logo</span>
                     </button>
                   </div>
@@ -780,8 +770,8 @@ const Sidebar: React.FC<SidebarProps> = ({ }) => {
               </div>
             )}
             {!isMobile && (
-              <button onClick={toggleSidebar} className="p-2.5 text-black hover:bg-blue-700/50 focus:outline-none rounded-lg transition-all duration-200 hover:scale-105">
-                {isSidebarOpen ? <ChevronLeft className="w-5 h-5 text-black" /> : <ChevronRight className="w-5 h-5" />}
+              <button onClick={toggleSidebar} className="p-2 text-black hover:bg-blue-700/50 focus:outline-none rounded-lg transition-all duration-200 hover:scale-105">
+                {isSidebarOpen ? <ChevronLeft className="w-4 h-4 text-black" /> : <ChevronRight className="w-4 h-4" />}
               </button>
             )}
           </div>
@@ -789,29 +779,29 @@ const Sidebar: React.FC<SidebarProps> = ({ }) => {
 
         {/* ── Create Main Board button ──────────────────────────────────────── */}
         {(isSidebarOpen || isMobile) && (
-          <div className="p-4">
+          <div className="px-3 py-2">
             <button
               onClick={() => { setIsModalOpen(true); closeMobileMenu(); }}
-              className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white py-3 px-4 rounded-lg font-medium transition-all duration-200 shadow-lg hover:shadow-xl flex items-center justify-center gap-2 group"
+              className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white py-2 px-3 rounded-lg font-medium text-sm transition-all duration-200 shadow-md hover:shadow-lg flex items-center justify-center gap-2 group"
             >
-              <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform duration-200" />
+              <Plus className="w-3.5 h-3.5 group-hover:rotate-90 transition-transform duration-200" />
               Create Main Board
             </button>
           </div>
         )}
 
         {/* ── Search bar ────────────────────────────────────────────────────── */}
-        <div className="px-4 pb-4">
+        <div className="px-3 pb-2">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 w-3.5 h-3.5" />
             <input
               ref={searchInputRef} type="text" placeholder="Search..."
               value={searchQuery} onChange={handleSearchChange}
-              className="w-full py-3 pl-10 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black bg-white shadow-sm transition-all duration-200"
+              className="w-full py-2 pl-8 pr-8 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black bg-white shadow-sm transition-all duration-200"
             />
             {searchQuery && (
-              <button onClick={clearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full p-1 transition-all duration-200">
-                <X className="w-4 h-4" />
+              <button onClick={clearSearch} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full p-0.5 transition-all duration-200">
+                <X className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
@@ -819,27 +809,28 @@ const Sidebar: React.FC<SidebarProps> = ({ }) => {
 
         {/* ── Navigation ────────────────────────────────────────────────────── */}
         <div className="flex-1 overflow-y-auto scrollbar-hide">
-          <div className="px-4 pb-4">
+          <div className="px-3 pb-3">
             {searchQuery && (
-              <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+              <div className="mb-3 p-2 bg-blue-50 rounded-lg border border-blue-200">
                 <div className="flex justify-between items-center">
-                  <p className="text-sm text-blue-800">
+                  <p className="text-xs text-blue-800">
                     <span className="font-medium">{filteredNavItems.length + filteredAdminItems.length + ("dashboard".includes(searchQuery.toLowerCase()) ? 1 : 0)}</span> results for "{searchQuery}"
                   </p>
-                  <button onClick={clearSearch} className="text-blue-600 hover:text-blue-800 text-sm font-medium hover:bg-blue-100 px-2 py-1 rounded">Clear</button>
+                  <button onClick={clearSearch} className="text-blue-600 hover:text-blue-800 text-xs font-medium hover:bg-blue-100 px-1.5 py-0.5 rounded">Clear</button>
                 </div>
               </div>
             )}
 
-            <div className="space-y-1 mb-6">
+            {/* Dashboard link */}
+            <div className="space-y-0.5 mb-4">
               {(!searchQuery.trim() || "dashboard".includes(searchQuery.toLowerCase())) && (
                 <Link href="/Dashboard" onClick={closeMobileMenu}
-                  className="flex items-center p-3 rounded-lg cursor-pointer transition-all duration-200 group hover:bg-blue-700/40 hover:shadow-md"
+                  className="flex items-center p-2 rounded-lg cursor-pointer transition-all duration-200 group hover:bg-blue-700/40 hover:shadow-sm"
                   onMouseEnter={() => setHoveredItem('dashboard')} onMouseLeave={() => setHoveredItem(null)}
                 >
-                  <LayoutDashboard className="w-5 h-5 flex-shrink-0 group-hover:scale-110 transition-transform duration-200" />
+                  <LayoutDashboard className="w-4 h-4 flex-shrink-0 group-hover:scale-110 transition-transform duration-200" />
                   {(isSidebarOpen || isMobile) && (
-                    <span className="ml-3 font-medium text-sm">
+                    <span className="ml-2 font-medium text-xs">
                       {searchQuery ? <span dangerouslySetInnerHTML={{ __html: highlight("Dashboard", searchQuery) }} /> : "Dashboard"}
                     </span>
                   )}
@@ -847,63 +838,64 @@ const Sidebar: React.FC<SidebarProps> = ({ }) => {
               )}
             </div>
 
-            <div className="space-y-2 mb-6">
+            {/* Main boards */}
+            <div className="space-y-1 mb-4">
               {filteredNavItems.map(item => {
                 const mbId = String(item.main_board_id);
                 const isExpanded = searchQuery.trim() ? true : activeMainBoard === mbId;
                 return (
-                  <div key={mbId} className="space-y-1">
+                  <div key={mbId} className="space-y-0.5">
                     <div
-                      className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-all duration-200 group ${isExpanded ? 'bg-blue-700/60 shadow-lg border border-blue-500/30' : 'hover:bg-blue-700/30'}`}
+                      className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all duration-200 group ${isExpanded ? 'bg-blue-700/60 shadow-md border border-blue-500/30' : 'hover:bg-blue-700/30'}`}
                       onClick={() => toggleMainBoard(mbId)}
                       onMouseEnter={() => setHoveredItem(item.main_board_id)}
                       onMouseLeave={() => setHoveredItem(null)}
                     >
                       <div className="flex items-center min-w-0 flex-1 group">
                         {!(item.boards && Object.keys(item.boards).length > 0 && isExpanded) && (
-                          <ChartColumnDecreasing className="w-4 h-4 mr-2 text-gray-700 flex-shrink-0 group-hover:hidden" />
+                          <ChartColumnDecreasing className="w-3.5 h-3.5 mr-1.5 text-gray-700 flex-shrink-0 group-hover:hidden" />
                         )}
                         {item.boards && Object.keys(item.boards).length > 0 && (
                           <div className={`flex-shrink-0 ${isExpanded ? "block" : "hidden group-hover:block"}`}>
-                            {isExpanded ? <ChevronDown className="w-4 h-4 mr-2 text-gray-700" /> : <ChevronRight className="w-4 h-4 mr-2 text-gray-700" />}
+                            {isExpanded ? <ChevronDown className="w-3.5 h-3.5 mr-1.5 text-gray-700" /> : <ChevronRight className="w-3.5 h-3.5 mr-1.5 text-gray-700" />}
                           </div>
                         )}
                         {(isSidebarOpen || isMobile) && (
-                          <span className="font-medium text-sm group-hover:text-black truncate">
+                          <span className="font-medium text-xs group-hover:text-black truncate">
                             {searchQuery ? <span dangerouslySetInnerHTML={{ __html: highlight(item.name, searchQuery) }} /> : item.name}
                           </span>
                         )}
                       </div>
 
                       {(isSidebarOpen || isMobile) && !searchQuery.trim() && (
-                        <div className="flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                          <Plus className="p-1.5 hover:bg-blue-600 rounded-md transition-colors duration-200" onClick={e => handlePlusClick(e, mbId)} />
-                          <button onClick={e => handleDeleteMainBoard(e, mbId, item.name)} className="p-1.5 hover:bg-red-600 rounded-md transition-colors duration-200" title="Delete Main Board">
-                            <Trash2 className="w-4 h-4" />
+                        <div className="flex space-x-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                          <Plus className="p-1 hover:bg-blue-600 rounded transition-colors duration-200 w-5 h-5" onClick={e => handlePlusClick(e, mbId)} />
+                          <button onClick={e => handleDeleteMainBoard(e, mbId, item.name)} className="p-1 hover:bg-red-600 rounded transition-colors duration-200" title="Delete Main Board">
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       )}
                     </div>
 
                     {isExpanded && (isSidebarOpen || isMobile) && (
-                      <div className="ml-7 space-y-1 pb-2">
+                      <div className="ml-5 space-y-0.5 pb-1">
                         {Object.keys(item.boards).filter(bId => item.boards[bId].is_active).map(boardId => {
                           const board = item.boards[boardId];
                           return (
                             <div
                               key={boardId}
-                              className={`flex items-center justify-between p-2.5 rounded-md cursor-pointer transition-all duration-200 group ${activeBoardId === boardId ? 'bg-blue-600/50 shadow-md border border-blue-400/30' : 'hover:bg-blue-700/25'}`}
+                              className={`flex items-center justify-between p-2 rounded-md cursor-pointer transition-all duration-200 group ${activeBoardId === boardId ? 'bg-blue-600/50 shadow-sm border border-blue-400/30' : 'hover:bg-blue-700/25'}`}
                               onClick={() => handleBoardClick(boardId)}
                             >
                               <Link
                                 href={{ pathname: '/Container', query: { main_board_id: item.main_board_id, board_id: boardId } }}
                                 onClick={closeMobileMenu}
-                                className="flex-1 text-black text-sm font-medium truncate"
+                                className="flex-1 text-black text-xs font-medium truncate"
                               >
                                 {searchQuery ? <span dangerouslySetInnerHTML={{ __html: highlight(board.name, searchQuery) }} /> : board.name}
                               </Link>
                               {!searchQuery.trim() && (
-                                <div className="flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                                <div className="flex space-x-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                                   <button
                                     onClick={e => { e.stopPropagation(); handleEditClick(boardId, item.main_board_id); }}
                                     className="p-1 hover:bg-blue-600 rounded transition-colors duration-200" title="Edit Board"
@@ -928,17 +920,18 @@ const Sidebar: React.FC<SidebarProps> = ({ }) => {
               })}
             </div>
 
+            {/* Admin items */}
             {userRole?.toLowerCase() === "admin" && (
-              <div className="space-y-1">
+              <div className="space-y-0.5">
                 {(searchQuery.trim() ? filteredAdminItems : adminNavigationItems).map(item => (
                   <Link key={item.id} href={item.href} onClick={closeMobileMenu}
-                    className={`flex items-center p-3 rounded-lg cursor-pointer transition-all duration-200 group ${pathname.startsWith(item.href) ? 'bg-blue-700 text-white shadow-md' : 'hover:bg-blue-700/40 hover:shadow-md'}`}
+                    className={`flex items-center p-2 rounded-lg cursor-pointer transition-all duration-200 group ${pathname.startsWith(item.href) ? 'bg-blue-700 text-white shadow-md' : 'hover:bg-blue-700/40 hover:shadow-sm'}`}
                     onMouseEnter={() => setHoveredItem(item.id)} onMouseLeave={() => setHoveredItem(null)}
                   >
-                    {item.id === 'users' && <User className="w-5 h-5 flex-shrink-0" />}
-                    {(item.id !== 'users') && <NotebookText className="w-5 h-5 flex-shrink-0" />}
+                    {item.id === 'users' && <User className="w-4 h-4 flex-shrink-0" />}
+                    {(item.id !== 'users') && <NotebookText className="w-4 h-4 flex-shrink-0" />}
                     {(isSidebarOpen || isMobile) && (
-                      <span className="ml-3 font-medium text-sm">
+                      <span className="ml-2 font-medium text-xs">
                         {searchQuery ? <span dangerouslySetInnerHTML={{ __html: highlight(item.label, searchQuery) }} /> : item.label}
                       </span>
                     )}
@@ -950,41 +943,41 @@ const Sidebar: React.FC<SidebarProps> = ({ }) => {
         </div>
 
         {/* ── User profile / dropdown ──────────────────────────────────────── */}
-        <div className="border-t border-gray-200 p-4 relative" ref={dropdownRef}>
+        <div className="border-t border-gray-200 p-2.5 relative" ref={dropdownRef}>
           {(isSidebarOpen || isMobile) ? (
             <div>
-              <button onClick={toggleDropdown} className="w-full flex items-center space-x-3 p-3 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors text-left">
-                <div className="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center text-white font-medium text-sm">
-                  {userData.userName ? userData.userName.charAt(0).toUpperCase() : <User className="w-4 h-4" />}
+              <button onClick={toggleDropdown} className="w-full flex items-center space-x-2 p-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors text-left">
+                <div className="w-7 h-7 bg-gray-600 rounded-full flex items-center justify-center text-white font-medium text-xs flex-shrink-0">
+                  {userData.userName ? userData.userName.charAt(0).toUpperCase() : <User className="w-3 h-3" />}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">{userData.userName || "N/A"}</p>
+                  <p className="text-xs font-medium text-gray-900 truncate">{userData.userName || "N/A"}</p>
                   <p className="text-xs text-blue-600 truncate">{userData.email || "N/A"}</p>
                 </div>
                 <div className="flex-shrink-0">
-                  {isDropdownOpen ? <ChevronLeft className="w-4 h-4 text-gray-500" /> : <ChevronRight className="w-4 h-4 text-gray-500" />}
+                  {isDropdownOpen ? <ChevronLeft className="w-3.5 h-3.5 text-gray-500" /> : <ChevronRight className="w-3.5 h-3.5 text-gray-500" />}
                 </div>
               </button>
               {isDropdownOpen && (
-                <div className="absolute left-full bottom-0 ml-2 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50 overflow-hidden">
-                  <div className="p-3 border-b border-gray-100 relative">
-                    <button onClick={() => setIsDropdownOpen(false)} className="absolute top-2 right-2 p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full"><X className="w-4 h-4" /></button>
-                    <div className="flex items-center space-x-3 pr-6">
-                      <div className="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center text-white font-medium text-sm">
-                        {userData.userName ? userData.userName.charAt(0).toUpperCase() : <User className="w-4 h-4" />}
+                <div className="absolute left-full bottom-0 ml-2 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-50 overflow-hidden">
+                  <div className="p-2.5 border-b border-gray-100 relative">
+                    <button onClick={() => setIsDropdownOpen(false)} className="absolute top-2 right-2 p-0.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full"><X className="w-3.5 h-3.5" /></button>
+                    <div className="flex items-center space-x-2 pr-5">
+                      <div className="w-7 h-7 bg-gray-600 rounded-full flex items-center justify-center text-white font-medium text-xs flex-shrink-0">
+                        {userData.userName ? userData.userName.charAt(0).toUpperCase() : <User className="w-3 h-3" />}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">{userData.userName || "N/A"}</p>
+                        <p className="text-xs font-medium text-gray-900 truncate">{userData.userName || "N/A"}</p>
                         <p className="text-xs text-blue-600 truncate">{userData.email || "N/A"}</p>
                       </div>
                     </div>
                   </div>
                   <div>
-                    <button onClick={handleSettingsClick} className="w-full flex items-center space-x-3 p-3 text-left text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                      <Settings className="w-4 h-4" /><span>Settings</span>
+                    <button onClick={handleSettingsClick} className="w-full flex items-center space-x-2 p-2.5 text-left text-xs text-gray-700 hover:bg-gray-50 transition-colors">
+                      <Settings className="w-3.5 h-3.5" /><span>Settings</span>
                     </button>
-                    <button onClick={handleLogout} className="w-full flex items-center space-x-3 p-3 text-left text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                      <LogOut className="w-4 h-4" /><span>Log out</span>
+                    <button onClick={handleLogout} className="w-full flex items-center space-x-2 p-2.5 text-left text-xs text-gray-700 hover:bg-gray-50 transition-colors">
+                      <LogOut className="w-3.5 h-3.5" /><span>Log out</span>
                     </button>
                   </div>
                 </div>
@@ -992,30 +985,30 @@ const Sidebar: React.FC<SidebarProps> = ({ }) => {
             </div>
           ) : (
             <div>
-              <button onClick={toggleDropdown} className="w-full flex justify-center p-3 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
-                <div className="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center text-white font-medium text-sm">
-                  {userData.userName ? userData.userName.charAt(0).toUpperCase() : <User className="w-4 h-4" />}
+              <button onClick={toggleDropdown} className="w-full flex justify-center p-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
+                <div className="w-7 h-7 bg-gray-600 rounded-full flex items-center justify-center text-white font-medium text-xs">
+                  {userData.userName ? userData.userName.charAt(0).toUpperCase() : <User className="w-3 h-3" />}
                 </div>
               </button>
               {isDropdownOpen && (
-                <div className="absolute left-full bottom-0 ml-2 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50 overflow-hidden">
-                  <div className="p-3 border-b border-gray-100">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center text-white font-medium text-sm">
-                        {userData.userName ? userData.userName.charAt(0).toUpperCase() : <User className="w-4 h-4" />}
+                <div className="absolute left-full bottom-0 ml-2 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-50 overflow-hidden">
+                  <div className="p-2.5 border-b border-gray-100">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-7 h-7 bg-gray-600 rounded-full flex items-center justify-center text-white font-medium text-xs">
+                        {userData.userName ? userData.userName.charAt(0).toUpperCase() : <User className="w-3 h-3" />}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">{userData.userName || "N/A"}</p>
+                        <p className="text-xs font-medium text-gray-900 truncate">{userData.userName || "N/A"}</p>
                         <p className="text-xs text-blue-600 truncate">{userData.email || "N/A"}</p>
                       </div>
                     </div>
                   </div>
                   <div>
-                    <button onClick={handleSettingsClick} className="w-full flex items-center space-x-3 p-3 text-left text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                      <Settings className="w-4 h-4" /><span>Settings</span>
+                    <button onClick={handleSettingsClick} className="w-full flex items-center space-x-2 p-2.5 text-left text-xs text-gray-700 hover:bg-gray-50 transition-colors">
+                      <Settings className="w-3.5 h-3.5" /><span>Settings</span>
                     </button>
-                    <button onClick={handleLogout} className="w-full flex items-center space-x-3 p-3 text-left text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                      <LogOut className="w-4 h-4" /><span>Log out</span>
+                    <button onClick={handleLogout} className="w-full flex items-center space-x-2 p-2.5 text-left text-xs text-gray-700 hover:bg-gray-50 transition-colors">
+                      <LogOut className="w-3.5 h-3.5" /><span>Log out</span>
                     </button>
                   </div>
                 </div>
@@ -1027,35 +1020,35 @@ const Sidebar: React.FC<SidebarProps> = ({ }) => {
         {/* ── Settings / Change Password Modal ─────────────────────────────── */}
         {isSettingsModalOpen && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
-              <div className="flex justify-between items-center p-6 border-b border-gray-200">
-                <h2 className="text-xl font-bold text-gray-900">Change Password</h2>
-                <button onClick={() => { setIsSettingsModalOpen(false); setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' }); }} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-all duration-200">
-                  <X className="w-5 h-5" />
+            <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full mx-4 overflow-hidden">
+              <div className="flex justify-between items-center px-5 py-4 border-b border-gray-200">
+                <h2 className="text-base font-bold text-gray-900">Change Password</h2>
+                <button onClick={() => { setIsSettingsModalOpen(false); setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' }); }} className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-all duration-200">
+                  <X className="w-4 h-4" />
                 </button>
               </div>
-              <div className="p-6 space-y-4">
+              <div className="p-5 space-y-3">
                 {([
                   { label: 'Current Password', key: 'currentPassword' as const, show: showCurrentPassword, toggle: () => setShowCurrentPassword(!showCurrentPassword) },
                   { label: 'New Password', key: 'newPassword' as const, show: showNewPassword, toggle: () => setShowNewPassword(!showNewPassword) },
                   { label: 'Confirm New Password', key: 'confirmPassword' as const, show: showConfirmPassword, toggle: () => setShowConfirmPassword(!showConfirmPassword) },
                 ]).map(({ label, key, show, toggle }) => (
                   <div key={key}>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">{label}</label>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">{label}</label>
                     <div className="relative">
                       <input type={show ? "text" : "password"} value={passwordData[key]} onChange={e => setPasswordData({ ...passwordData, [key]: e.target.value })}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 pr-10" placeholder={`Enter ${label.toLowerCase()}`} />
-                      <button type="button" onClick={toggle} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700">
-                        {show ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 pr-9" placeholder={`Enter ${label.toLowerCase()}`} />
+                      <button type="button" onClick={toggle} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700">
+                        {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
                   </div>
                 ))}
               </div>
-              <div className="flex justify-end gap-3 p-6 border-t bg-gray-50">
-                <button onClick={() => { setIsSettingsModalOpen(false); setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' }); }} disabled={isUpdatingPassword} className="px-6 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50">Cancel</button>
-                <button onClick={handlePasswordUpdate} disabled={isUpdatingPassword} className="px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2">
-                  {isUpdatingPassword ? (<><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />Updating...</>) : 'Update Password'}
+              <div className="flex justify-end gap-2 px-5 py-3 border-t bg-gray-50">
+                <button onClick={() => { setIsSettingsModalOpen(false); setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' }); }} disabled={isUpdatingPassword} className="px-4 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50">Cancel</button>
+                <button onClick={handlePasswordUpdate} disabled={isUpdatingPassword} className="px-4 py-2 text-xs font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1.5">
+                  {isUpdatingPassword ? (<><div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white" />Updating...</>) : 'Update Password'}
                 </button>
               </div>
             </div>
@@ -1065,32 +1058,32 @@ const Sidebar: React.FC<SidebarProps> = ({ }) => {
         {/* ── Logo Modal ────────────────────────────────────────────────────── */}
         {isLogoModalOpen && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
-              <div className="flex justify-between items-center p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-blue-100">
-                <h2 className="text-xl font-bold text-gray-900">Edit Logo</h2>
-                <button onClick={handleLogoCancel} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full"><X className="w-5 h-5" /></button>
+            <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full mx-4 overflow-hidden">
+              <div className="flex justify-between items-center px-5 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-blue-100">
+                <h2 className="text-base font-bold text-gray-900">Edit Logo</h2>
+                <button onClick={handleLogoCancel} className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full"><X className="w-4 h-4" /></button>
               </div>
-              <div className="p-6 space-y-6">
+              <div className="p-5 space-y-4">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-3">Upload New Logo</label>
-                  <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-blue-400 transition-colors bg-gray-50">
+                  <label className="block text-xs font-semibold text-gray-700 mb-2">Upload New Logo</label>
+                  <div className="border-2 border-dashed border-gray-300 rounded-xl p-5 text-center hover:border-blue-400 transition-colors bg-gray-50">
                     <input type="file" id="logo-upload" accept="image/*" onChange={handleFileChange} className="hidden" />
                     <label htmlFor="logo-upload" className="cursor-pointer flex flex-col items-center">
-                      <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mb-3"><Upload className="w-6 h-6 text-blue-600" /></div>
-                      <span className="text-sm font-medium text-gray-700 mb-1">{selectedFile ? selectedFile.name : 'Click to upload or drag and drop'}</span>
+                      <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center mb-2"><Upload className="w-5 h-5 text-blue-600" /></div>
+                      <span className="text-xs font-medium text-gray-700 mb-1">{selectedFile ? selectedFile.name : 'Click to upload'}</span>
                       <span className="text-xs text-gray-500">PNG, JPG, GIF up to 10MB</span>
                     </label>
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-3">Description (Optional)</label>
-                  <textarea value={logoDescription} onChange={e => setLogoDescription(e.target.value)} placeholder="Enter a description for the logo..." className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 resize-none" rows={3} />
+                  <label className="block text-xs font-semibold text-gray-700 mb-2">Description (Optional)</label>
+                  <textarea value={logoDescription} onChange={e => setLogoDescription(e.target.value)} placeholder="Enter a description..." className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 resize-none" rows={2} />
                 </div>
               </div>
-              <div className="flex justify-end gap-3 p-6 border-t bg-gray-50">
-                <button onClick={handleLogoCancel} disabled={isUploading} className="px-6 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50">Cancel</button>
-                <button onClick={handleLogoSubmit} disabled={isUploading || !selectedFile} className="px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2">
-                  {isUploading ? (<><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />Uploading...</>) : 'Submit'}
+              <div className="flex justify-end gap-2 px-5 py-3 border-t bg-gray-50">
+                <button onClick={handleLogoCancel} disabled={isUploading} className="px-4 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50">Cancel</button>
+                <button onClick={handleLogoSubmit} disabled={isUploading || !selectedFile} className="px-4 py-2 text-xs font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1.5">
+                  {isUploading ? (<><div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white" />Uploading...</>) : 'Submit'}
                 </button>
               </div>
             </div>
@@ -1100,20 +1093,18 @@ const Sidebar: React.FC<SidebarProps> = ({ }) => {
         {/* ── Create Main Board Modal ───────────────────────────────────────── */}
         {isModalOpen && (
           <div className="fixed inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm z-50">
-            <div className="bg-white rounded-2xl shadow-2xl p-6 w-96 mx-4">
-              <h2 className="text-2xl font-bold mb-6 text-gray-900">Create Main Board</h2>
+            <div className="bg-white rounded-xl shadow-2xl p-5 w-80 mx-4">
+              <h2 className="text-base font-bold mb-4 text-gray-900">Create Main Board</h2>
               <input
                 style={{ color: "black" }} type="text" value={mainBoardName}
                 onChange={e => setMainBoardName(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleSave()}
                 placeholder="Enter Main Board Name"
-                className="w-full p-3 border border-gray-300 rounded-lg mb-6 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full p-2.5 text-sm border border-gray-300 rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
-              <div className="flex justify-end space-x-4">
-                <button onClick={() => setIsModalOpen(false)} className="bg-gray-300 hover:bg-gray-400 text-black py-2.5 px-6 rounded-lg font-medium transition-all duration-200">Cancel</button>
-                <button onClick={handleSave} className="bg-blue-600 hover:bg-blue-700 text-white py-2.5 px-6 rounded-lg font-medium transition-all duration-200">
-                  Save
-                </button>
+              <div className="flex justify-end space-x-3">
+                <button onClick={() => setIsModalOpen(false)} className="bg-gray-300 hover:bg-gray-400 text-black py-2 px-4 text-sm rounded-lg font-medium transition-all duration-200">Cancel</button>
+                <button onClick={handleSave} className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 text-sm rounded-lg font-medium transition-all duration-200">Save</button>
               </div>
             </div>
           </div>
@@ -1122,43 +1113,43 @@ const Sidebar: React.FC<SidebarProps> = ({ }) => {
         {/* ── Create / Edit Board Modal ─────────────────────────────────────── */}
         {showModal && selectedBoard && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center" onClick={closeModal}>
-            <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md mx-4 relative" onClick={e => e.stopPropagation()}>
-              <div className="mb-6">
-                <button className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full p-2 transition-all duration-200" onClick={closeModal}>
-                  <X className="w-5 h-5" />
+            <div className="bg-white rounded-xl shadow-2xl p-5 w-full max-w-sm mx-4 relative" onClick={e => e.stopPropagation()}>
+              <div className="mb-4">
+                <button className="absolute top-3 right-3 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full p-1.5 transition-all duration-200" onClick={closeModal}>
+                  <X className="w-4 h-4" />
                 </button>
-                <h2 className="text-2xl font-bold text-gray-900">{isEditMode ? 'Edit Board' : 'Create New Board'}</h2>
-                <p className="text-sm text-gray-500 mt-1">
+                <h2 className="text-base font-bold text-gray-900">{isEditMode ? 'Edit Board' : 'Create New Board'}</h2>
+                <p className="text-xs text-gray-500 mt-0.5">
                   {isEditMode ? `Board ID: ${editingBoardId} • Main Board ID: ${selectedBoard.mainBoardId}` : `Main Board ID: ${selectedBoard.mainBoardId}`}
                 </p>
               </div>
-              <div className="space-y-4">
+              <div className="space-y-3">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Board Name <span className="text-red-500">*</span></label>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">Board Name <span className="text-red-500">*</span></label>
                   <input type="text" value={newBoardName} onChange={e => setNewBoardName(e.target.value)}
-                    placeholder="Enter board name (e.g., Hospital Analysis)"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+                    placeholder="Enter board name"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Customer Database Key <span className="text-red-500">*</span></label>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">Customer Database Key <span className="text-red-500">*</span></label>
                   <input type="text" value={customerDbKey} onChange={e => setCustomerDbKey(e.target.value)}
-                    placeholder="Enter database key (e.g., customer_db_tally)"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+                    placeholder="e.g., customer_db_tally"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
                   />
                   <p className="mt-1 text-xs text-gray-500">Examples: customer_db_tally, customer_db_onegcp</p>
                 </div>
                 {newBoardName.trim() && customerDbKey.trim() && (
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                    <p className="text-sm text-blue-800"><span className="font-semibold">{isEditMode ? 'Ready to update:' : 'Ready to create:'}</span> {newBoardName}</p>
-                    <p className="text-xs text-blue-600 mt-1">Database: {customerDbKey}</p>
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-2.5">
+                    <p className="text-xs text-blue-800"><span className="font-semibold">{isEditMode ? 'Ready to update:' : 'Ready to create:'}</span> {newBoardName}</p>
+                    <p className="text-xs text-blue-600 mt-0.5">Database: {customerDbKey}</p>
                   </div>
                 )}
               </div>
-              <div className="flex justify-end gap-3 mt-6">
-                <button onClick={closeModal} className="px-6 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200">Cancel</button>
+              <div className="flex justify-end gap-2 mt-5">
+                <button onClick={closeModal} className="px-4 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200">Cancel</button>
                 <button onClick={handleCreateBoard} disabled={!newBoardName.trim() || !customerDbKey.trim()}
-                  className="px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200">
+                  className="px-4 py-2 text-xs font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200">
                   {isEditMode ? 'Update Board' : 'Create Board'}
                 </button>
               </div>
