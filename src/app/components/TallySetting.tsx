@@ -1,6 +1,5 @@
-"use client";
-import React from "react";
-import { useState, useEffect } from 'react';
+import React, { useMemo, useCallback, memo } from "react";
+import { useState, useEffect, useRef } from 'react';
 import { Upload, X, FileText, FileSpreadsheet, FileJson, Check, Eye, Database, Plus, Loader2, AlertTriangle, RefreshCw, Trash2, Edit3, Wand2, Type, Filter, Calendar, RotateCcw, History, ArrowLeft, Table, Save, ArrowUp, ArrowDown, Hash, BookMarked, SaveAll } from 'lucide-react';
 
 type FileType = 'csv' | 'excel' | 'json';
@@ -67,15 +66,14 @@ export default function TallySetting() {
   const [uploading, setUploading] = useState(false);
   const [selectedUploadType, setSelectedUploadType] = useState<FileType | null>(null);
 
-  // Toast notification state
+  // ─── TOAST FIX: use a ref for the counter so setTimeout always captures the correct id ───
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
-  const [toastCounter, setToastCounter] = useState(0);
+  const toastCounterRef = useRef(0);
 
   const showToast = (type: 'success' | 'error' | 'info' | 'warning', message: string) => {
-    const id = toastCounter;
-    setToastCounter(prev => prev + 1);
+    const id = toastCounterRef.current++;          // always a fresh unique id
     setToasts(prev => [...prev, { id, type, message }]);
-    setTimeout(() => removeToast(id), 5000);
+    setTimeout(() => removeToast(id), 5000);       // id is captured correctly
   };
 
   const removeToast = (id: number) => {
@@ -137,19 +135,37 @@ export default function TallySetting() {
       if (response.status === 405) response = await fetch(renameApiUrl, { method: 'PATCH', headers: { "X-API-Key": EXCEL_API_KEY } });
 
       if (response.ok) {
-        const saveApiUrl = `http://127.0.0.1:8000/save-filter/?file_name=${encodeURIComponent(selectedDataset.name)}`;
-        const saveResponse = await fetch(saveApiUrl, { method: 'POST', headers: { "X-API-Key": EXCEL_API_KEY, "Content-Type": "application/json" } });
-        if (saveResponse.ok) {
-          showToast('success', `Column renamed: '${renameOldColumn}' → '${renameNewColumn}' and saved`);
+        // ── Reload dataset so the new column name is visible in the table ──
+        const viewUrl = `http://127.0.0.1:8000/view-data/?file_name=${encodeURIComponent(selectedDataset.name)}`;
+        const viewResponse = await fetch(viewUrl, { method: 'GET', headers: { "X-API-Key": EXCEL_API_KEY } });
+        if (viewResponse.ok) {
+          const viewData = await viewResponse.json();
+          const fullData = viewData.data || viewData.preview || [];
+          const columnHeaders = viewData.columns || [];
+          const rows = viewData.rows || fullData.length;
+          setSelectedDataset({ ...selectedDataset, fullData, rows, columns: columnHeaders.length, columnHeaders });
+
+          // ── Set preview mode — same banner as other filters ──
+          const syntheticPreview = {
+            rows,
+            dropped_rows: 0,
+            columns: columnHeaders,
+            preview: fullData,
+            filter_type: 'RENAME_COLUMN',
+            old_column: renameOldColumn,
+            new_column: renameNewColumn,
+          };
+          setPreviewData(syntheticPreview);
+          setIsPreviewMode(true);
+          setCurrentFilterType('rename_column');
           setHasTransformations(true);
-          await refreshCurrentDataset();
+          setSelectedTransformation(null);   // close the right panel
           setRenameOldColumn('');
           setRenameNewColumn('');
-          setSelectedTransformation(null);
+          showToast('success', `Preview: '${renameOldColumn}' → '${renameNewColumn}'. Click Save to confirm.`);
         } else {
-          const saveError = await saveResponse.text();
-          showToast('error', `Column renamed but failed to save: ${saveError}`);
-          await refreshCurrentDataset();
+          showToast('warning', 'Column renamed. Reload the table to see the change.');
+          setSelectedTransformation(null);
         }
       } else {
         const errorText = await response.text();
@@ -174,17 +190,45 @@ export default function TallySetting() {
     setIsTypeCasting(true);
     try {
       const apiUrl = `http://127.0.0.1:8000/type-cast/?file_name=${encodeURIComponent(selectedDataset.name)}&column_name=${encodeURIComponent(typeCastColumn)}&new_type=${encodeURIComponent(typeCastNewType)}`;
-      let response = await fetch(apiUrl, { method: 'PUT', headers: { "X-API-Key": EXCEL_API_KEY } });
-      if (response.status === 405) response = await fetch(apiUrl, { method: 'GET', headers: { "X-API-Key": EXCEL_API_KEY } });
-      if (response.status === 405) response = await fetch(apiUrl, { method: 'PATCH', headers: { "X-API-Key": EXCEL_API_KEY } });
-      if (response.status === 405) response = await fetch(apiUrl, { method: 'POST', headers: { "X-API-Key": EXCEL_API_KEY } });
+
+      // Backend uses PUT
+      const response = await fetch(apiUrl, { method: 'PUT', headers: { "X-API-Key": EXCEL_API_KEY } });
 
       if (response.ok) {
-        showToast('success', `Column '${typeCastColumn}' converted to ${typeCastNewType}`);
-        setHasTransformations(true);
-        await refreshCurrentDataset();
+        const data = await response.json();
+
+        // Reload fresh data from view-data so table reflects the cast
+        const viewUrl = `http://127.0.0.1:8000/view-data/?file_name=${encodeURIComponent(selectedDataset.name)}`;
+        const viewResponse = await fetch(viewUrl, { method: 'GET', headers: { "X-API-Key": EXCEL_API_KEY } });
+
+        if (viewResponse.ok) {
+          const viewData = await viewResponse.json();
+          const fullData = viewData.data || viewData.preview || [];
+          const cols = viewData.columns || selectedDataset.columnHeaders || [];
+          const rows = viewData.rows || fullData.length;
+
+          setSelectedDataset({ ...selectedDataset, fullData, rows, columns: cols.length, columnHeaders: cols });
+
+          // Enter preview mode — user must click Save to call /save-filter/
+          const syntheticPreview = {
+            rows,
+            dropped_rows: 0,
+            columns: cols,
+            preview: fullData,
+            filter_type: 'TYPE_CAST',
+            cast_column: typeCastColumn,
+            cast_type: typeCastNewType,
+          };
+          setPreviewData(syntheticPreview);
+          setIsPreviewMode(true);
+          setCurrentFilterType('type_cast');
+          setHasTransformations(true);
+        }
+
+        setSelectedTransformation(null);
         setTypeCastColumn('');
         setTypeCastNewType('');
+        showToast('success', `Preview: '${typeCastColumn}' → ${typeCastNewType}. Click Save to confirm.`);
       } else {
         const errorText = await response.text();
         showToast('error', `Failed to convert column: ${errorText}`);
@@ -201,34 +245,40 @@ export default function TallySetting() {
   const [aggregateFunction, setAggregateFunction] = useState<string>('');
   const [isGroupingAggregating, setIsGroupingAggregating] = useState(false);
 
-  const handleGroupAndAggregate = async () => {
-    if (!selectedDataset || groupByColumns.length === 0 || !aggregateColumn || !aggregateFunction) {
-      showToast('warning', 'Please select group by columns, aggregate column, and function');
-      return;
+ const handleGroupAndAggregate = async () => {
+  if (!selectedDataset || groupByColumns.length === 0 || !aggregateColumn || !aggregateFunction) {
+    showToast('warning', 'Please select group by columns, aggregate column, and function'); return;
+  }
+  setIsGroupingAggregating(true);
+  try {
+    const params = new URLSearchParams();
+    params.append('file_name', selectedDataset.name);
+    groupByColumns.forEach(col => params.append('group_by', col));
+    params.append('aggregate_column', aggregateColumn);
+    params.append('agg_func', aggregateFunction);
+    const apiUrl = `http://127.0.0.1:8000/group-and-aggregate/?${params.toString()}`;
+    const response = await fetch(apiUrl, { method: 'GET', headers: { "X-API-Key": EXCEL_API_KEY } });
+    if (response.ok) {
+      const data = await response.json();
+      const filteredData = data.preview || data.data || [];
+      const columnHeaders = data.columns || selectedDataset.columnHeaders || [];
+      const rows = data.rows || filteredData.length;
+       setPreviewData(data);
+        setIsPreviewMode(true);
+      setSelectedDataset({ ...selectedDataset, fullData: filteredData, rows, columns: columnHeaders.length, columnHeaders });
+      setCurrentFilterType('group_and_aggregate');
+      setSelectedTransformation(null);
+      showToast('success', `Grouped by ${groupByColumns.join(', ')} — ${rows} rows`);
+    } else {
+      const errorText = await response.text();
+      showToast('error', `Failed to group and aggregate: ${errorText}`);
     }
-    setIsGroupingAggregating(true);
-    try {
-      const params = new URLSearchParams();
-      params.append('file_name', selectedDataset.name);
-      groupByColumns.forEach(col => params.append('group_by', col));
-      params.append('aggregate_column', aggregateColumn);
-      params.append('agg_func', aggregateFunction);
-      const apiUrl = `http://127.0.0.1:8000/group-and-aggregate/?${params.toString()}`;
-      const response = await fetch(apiUrl, { method: 'GET', headers: { "X-API-Key": EXCEL_API_KEY } });
-      if (response.ok) {
-        showToast('success', `Preview ready: Grouped by ${groupByColumns.join(', ')}`);
-        setCurrentFilterType('group_and_aggregate');
-        await fetchFilterPreview();
-      } else {
-        const errorText = await response.text();
-        showToast('error', `Failed to group and aggregate: ${errorText}`);
-      }
-    } catch (error) {
-      showToast('error', 'Failed to group and aggregate. Please check your connection.');
-    } finally {
-      setIsGroupingAggregating(false);
-    }
-  };
+  } catch (error) {
+    showToast('error', 'Failed to group and aggregate. Please check your connection.');
+  } finally {
+    setIsGroupingAggregating(false);
+  }
+};
 
   const [dateColumn, setDateColumn] = useState<string>('');
   const [availableYears, setAvailableYears] = useState<number[]>([]);
@@ -258,13 +308,20 @@ export default function TallySetting() {
       const apiUrl = `http://127.0.0.1:8000/filter-by-date/?${params.toString()}`;
       const response = await fetch(apiUrl, { method: 'GET', headers: { "X-API-Key": EXCEL_API_KEY } });
       if (response.ok) {
+        const data = await response.json();
+        const filteredData = data.preview || data.data || [];
+        const columnHeaders = data.columns || selectedDataset.columnHeaders || [];
+        const rows = data.rows || filteredData.length;
+         setPreviewData(data);
+        setIsPreviewMode(true);
+        setSelectedDataset({ ...selectedDataset, fullData: filteredData, rows, columns: columnHeaders.length, columnHeaders });
+        setCurrentFilterType('filter_by_date');
+        setSelectedTransformation(null);
         const filterSummary = [];
         if (selectedYears.length > 0) filterSummary.push(`Years: ${selectedYears.join(', ')}`);
         if (selectedMonths.length > 0) filterSummary.push(`Months: ${selectedMonths.join(', ')}`);
         if (selectedDays.length > 0) filterSummary.push(`Days: ${selectedDays.join(', ')}`);
-        showToast('success', `Preview ready: ${filterSummary.join(' | ')}`);
-        setCurrentFilterType('filter_by_date');
-        await fetchFilterPreview();
+        showToast('success', `Filtered: ${filterSummary.join(' | ')} — ${rows} rows remaining`);
       } else {
         const errorText = await response.text();
         showToast('error', `Failed to filter by date: ${errorText}`);
@@ -317,12 +374,29 @@ export default function TallySetting() {
       params.append('file_name', selectedDataset.name);
       params.append('column_name', filterColumn);
       valuesArray.forEach(value => params.append('value', String(value)));
-      const apiUrl = `http://127.0.0.1:8000/select-column-value/?${params.toString()}`;
+      const apiUrl = `http://127.0.0.1:8000/select-rows/?${params.toString()}`;
       const response = await fetch(apiUrl, { method: 'GET', headers: { "X-API-Key": EXCEL_API_KEY } });
       if (response.ok) {
-        showToast('success', `Filtered "${filterColumn}" by ${valuesArray.length} value(s)`);
+        const data = await response.json();
+
+        const filteredData = data.preview || data.data || [];
+        const columnHeaders = data.columns || selectedDataset.columnHeaders || [];
+        const rows = data.rows || filteredData.length;
+
+        setSelectedDataset({
+          ...selectedDataset,
+          fullData: filteredData,
+          rows,
+          columns: columnHeaders.length,
+          columnHeaders
+        });
+
+        setPreviewData(data);
+        setIsPreviewMode(true);
         setCurrentFilterType('filter_by_values');
-        await fetchFilterPreview();
+        setSelectedTransformation(null);
+
+        showToast('success', `Filtered "${filterColumn}" by ${valuesArray.length} value(s) — ${rows} rows remaining`);
       } else {
         const errorText = await response.text();
         showToast('error', `Failed to apply filter: ${errorText}`);
@@ -333,6 +407,7 @@ export default function TallySetting() {
       setIsApplyingFilter(false);
     }
   };
+
 
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [previewData, setPreviewData] = useState<any>(null);
@@ -413,7 +488,7 @@ export default function TallySetting() {
     }
   };
 
-  const SortIndicator = ({ columnName }: { columnName: string }) => {
+  const SortIndicator = memo(({ columnName, sortColumn, sortOrder }: { columnName: string; sortColumn: string | null; sortOrder: 'asc' | 'desc' }) => {
     if (sortColumn !== columnName) {
       return (
         <div className="flex flex-col opacity-30 hover:opacity-60 transition-opacity">
@@ -429,7 +504,7 @@ export default function TallySetting() {
           : <svg className="w-4 h-4 text-blue-500" fill="currentColor" viewBox="0 0 12 12"><path d="M6 9l4-4H2z" /></svg>}
       </div>
     );
-  };
+  });
 
   const [filterDropdownOpen, setFilterDropdownOpen] = useState<string | null>(null);
   const [filterDropdownPosition, setFilterDropdownPosition] = useState({ top: 0, left: 0 });
@@ -448,7 +523,7 @@ export default function TallySetting() {
       params.append('file_name', selectedDataset.name);
       params.append('column_name', filterDropdownOpen);
       valuesArray.forEach(value => params.append('value', String(value)));
-      const apiUrl = `http://127.0.0.1:8000/select-column-value/?${params.toString()}`;
+      const apiUrl = `http://127.0.0.1:8000/select-rows/?${params.toString()}`;
       const response = await fetch(apiUrl, { method: 'GET', headers: { "X-API-Key": EXCEL_API_KEY } });
       if (response.ok) {
         showToast('success', `Filtered "${filterDropdownOpen}" by ${valuesArray.length} value(s)`);
@@ -550,36 +625,43 @@ export default function TallySetting() {
   const [textFilterValues, setTextFilterValues] = useState<string[]>([]);
   const [isApplyingTextFilter, setIsApplyingTextFilter] = useState(false);
 
-  const handleTextFilter = async () => {
-    if (!selectedDataset || !textFilterColumn || !textFilterType) { showToast('warning', 'Please select a column and filter type'); return; }
-    if (['equals', 'contains', 'starts_with', 'ends_with', 'not_equals'].includes(textFilterType) && !textFilterValue) { showToast('warning', 'Please enter a filter value'); return; }
-    if (textFilterType === 'between' && (!textFilterValue || !textFilterValue2)) { showToast('warning', 'Please enter both values for "between" filter'); return; }
-    if (textFilterType === 'in' && textFilterValues.length === 0) { showToast('warning', 'Please enter at least one value for "in" filter'); return; }
-    setIsApplyingTextFilter(true);
-    try {
-      const params = new URLSearchParams();
-      params.append('file_name', selectedDataset.name);
-      params.append('column', textFilterColumn);
-      params.append('filter_type', textFilterType);
-      if (['equals', 'contains', 'starts_with', 'ends_with', 'not_equals'].includes(textFilterType)) params.append('value', textFilterValue);
-      else if (textFilterType === 'between') { params.append('value', textFilterValue); params.append('value2', textFilterValue2); }
-      else if (textFilterType === 'in') textFilterValues.forEach(val => params.append('values', val));
-      const apiUrl = `http://127.0.0.1:8000/text-filter/?${params.toString()}`;
-      const response = await fetch(apiUrl, { method: 'GET', headers: { "X-API-Key": EXCEL_API_KEY } });
-      if (response.ok) {
-        showToast('success', `Preview ready: ${getTextFilterDescription()}`);
-        setCurrentFilterType('text_filter');
-        await fetchFilterPreview();
-      } else {
-        const errorText = await response.text();
-        showToast('error', `Failed to apply text filter: ${errorText}`);
-      }
-    } catch (error) {
-      showToast('error', 'Failed to apply text filter. Please check your connection.');
-    } finally {
-      setIsApplyingTextFilter(false);
+ const handleTextFilter = async () => {
+  if (!selectedDataset || !textFilterColumn || !textFilterType) { showToast('warning', 'Please select a column and filter type'); return; }
+  if (['equals', 'contains', 'starts_with', 'ends_with', 'not_equals'].includes(textFilterType) && !textFilterValue) { showToast('warning', 'Please enter a filter value'); return; }
+  if (textFilterType === 'between' && (!textFilterValue || !textFilterValue2)) { showToast('warning', 'Please enter both values for "between" filter'); return; }
+  if (textFilterType === 'in' && textFilterValues.length === 0) { showToast('warning', 'Please enter at least one value for "in" filter'); return; }
+  setIsApplyingTextFilter(true);
+  try {
+    const params = new URLSearchParams();
+    params.append('file_name', selectedDataset.name);
+    params.append('column', textFilterColumn);
+    params.append('filter_type', textFilterType);
+    if (['equals', 'contains', 'starts_with', 'ends_with', 'not_equals'].includes(textFilterType)) params.append('value', textFilterValue);
+    else if (textFilterType === 'between') { params.append('value', textFilterValue); params.append('value2', textFilterValue2); }
+    else if (textFilterType === 'in') textFilterValues.forEach(val => params.append('values', val));
+    const apiUrl = `http://127.0.0.1:8000/text-filter/?${params.toString()}`;
+    const response = await fetch(apiUrl, { method: 'GET', headers: { "X-API-Key": EXCEL_API_KEY } });
+    if (response.ok) {
+      const data = await response.json();
+      const filteredData = data.preview || data.data || [];
+      const columnHeaders = data.columns || selectedDataset.columnHeaders || [];
+      const rows = data.rows || filteredData.length;
+       setPreviewData(data);
+        setIsPreviewMode(true);
+      setSelectedDataset({ ...selectedDataset, fullData: filteredData, rows, columns: columnHeaders.length, columnHeaders });
+      setCurrentFilterType('text_filter');
+      setSelectedTransformation(null);
+      showToast('success', `Filtered: ${getTextFilterDescription()} — ${rows} rows remaining`);
+    } else {
+      const errorText = await response.text();
+      showToast('error', `Failed to apply text filter: ${errorText}`);
     }
-  };
+  } catch (error) {
+    showToast('error', 'Failed to apply text filter. Please check your connection.');
+  } finally {
+    setIsApplyingTextFilter(false);
+  }
+};
 
   const getTextFilterDescription = () => {
     const filterLabels: { [key: string]: string } = {
@@ -599,35 +681,42 @@ export default function TallySetting() {
   const [isApplyingNumberFilter, setIsApplyingNumberFilter] = useState(false);
 
   const handleNumberFilter = async () => {
-    if (!selectedDataset || !numberFilterColumn || !numberFilterType) { showToast('warning', 'Please select a column and filter type'); return; }
-    if (['equals', 'not_equals', 'greater_than', 'less_than', 'greater_than_or_equal', 'less_than_or_equal'].includes(numberFilterType) && !numberFilterValue) { showToast('warning', 'Please enter a filter value'); return; }
-    if (numberFilterType === 'between' && (!numberFilterValue || !numberFilterValue2)) { showToast('warning', 'Please enter both values for "between" filter'); return; }
-    if (numberFilterType === 'in' && numberFilterValues.length === 0) { showToast('warning', 'Please enter at least one value for "in" filter'); return; }
-    setIsApplyingNumberFilter(true);
-    try {
-      const params = new URLSearchParams();
-      params.append('file_name', selectedDataset.name);
-      params.append('column', numberFilterColumn);
-      params.append('filter_type', numberFilterType);
-      if (['equals', 'not_equals', 'greater_than', 'less_than', 'greater_than_or_equal', 'less_than_or_equal'].includes(numberFilterType)) params.append('value', numberFilterValue);
-      else if (numberFilterType === 'between') { params.append('value', numberFilterValue); params.append('value2', numberFilterValue2); }
-      else if (numberFilterType === 'in') numberFilterValues.forEach(val => params.append('values', val));
-      const apiUrl = `http://127.0.0.1:8000/number-filter/?${params.toString()}`;
-      const response = await fetch(apiUrl, { method: 'GET', headers: { "X-API-Key": EXCEL_API_KEY } });
-      if (response.ok) {
-        showToast('success', `Preview ready: ${getNumberFilterDescription()}`);
-        setCurrentFilterType('number_filter');
-        await fetchFilterPreview();
-      } else {
-        const errorText = await response.text();
-        showToast('error', `Failed to apply number filter: ${errorText}`);
-      }
-    } catch (error) {
-      showToast('error', 'Failed to apply number filter. Please check your connection.');
-    } finally {
-      setIsApplyingNumberFilter(false);
+  if (!selectedDataset || !numberFilterColumn || !numberFilterType) { showToast('warning', 'Please select a column and filter type'); return; }
+  if (['equals', 'not_equals', 'greater_than', 'less_than', 'greater_than_or_equal', 'less_than_or_equal'].includes(numberFilterType) && !numberFilterValue) { showToast('warning', 'Please enter a filter value'); return; }
+  if (numberFilterType === 'between' && (!numberFilterValue || !numberFilterValue2)) { showToast('warning', 'Please enter both values for "between" filter'); return; }
+  if (numberFilterType === 'in' && numberFilterValues.length === 0) { showToast('warning', 'Please enter at least one value for "in" filter'); return; }
+  setIsApplyingNumberFilter(true);
+  try {
+    const params = new URLSearchParams();
+    params.append('file_name', selectedDataset.name);
+    params.append('column', numberFilterColumn);
+    params.append('filter_type', numberFilterType);
+    if (['equals', 'not_equals', 'greater_than', 'less_than', 'greater_than_or_equal', 'less_than_or_equal'].includes(numberFilterType)) params.append('value', numberFilterValue);
+    else if (numberFilterType === 'between') { params.append('value', numberFilterValue); params.append('value2', numberFilterValue2); }
+    else if (numberFilterType === 'in') numberFilterValues.forEach(val => params.append('values', val));
+    const apiUrl = `http://127.0.0.1:8000/number-filter/?${params.toString()}`;
+    const response = await fetch(apiUrl, { method: 'GET', headers: { "X-API-Key": EXCEL_API_KEY } });
+    if (response.ok) {
+      const data = await response.json();
+      const filteredData = data.preview || data.data || [];
+      const columnHeaders = data.columns || selectedDataset.columnHeaders || [];
+      const rows = data.rows || filteredData.length;
+       setPreviewData(data);
+        setIsPreviewMode(true);
+      setSelectedDataset({ ...selectedDataset, fullData: filteredData, rows, columns: columnHeaders.length, columnHeaders });
+      setCurrentFilterType('number_filter');
+      setSelectedTransformation(null);
+      showToast('success', `Filtered: ${getNumberFilterDescription()} — ${rows} rows remaining`);
+    } else {
+      const errorText = await response.text();
+      showToast('error', `Failed to apply number filter: ${errorText}`);
     }
-  };
+  } catch (error) {
+    showToast('error', 'Failed to apply number filter. Please check your connection.');
+  } finally {
+    setIsApplyingNumberFilter(false);
+  }
+};
 
   const getNumberFilterDescription = () => {
     const filterLabels: { [key: string]: string } = {
@@ -671,14 +760,13 @@ export default function TallySetting() {
 
   const selectAllColumns = () => {
     if (!selectedDataset) return;
-    setSelectedColumns(new Set(getColumnHeaders(selectedDataset)));
+    setSelectedColumns(new Set(columnHeaders));
   };
 
   const deselectAllColumns = () => setSelectedColumns(new Set());
   const areAllColumnsSelected = () => {
     if (!selectedDataset) return false;
-    const allColumns = getColumnHeaders(selectedDataset);
-    return allColumns.length > 0 && selectedColumns.size === allColumns.length;
+    return columnHeaders.length > 0 && selectedColumns.size === columnHeaders.length;
   };
   const toggleSelectAll = () => areAllColumnsSelected() ? deselectAllColumns() : selectAllColumns();
 
@@ -754,7 +842,6 @@ export default function TallySetting() {
   // =============================================
   const openSaveAsModal = () => {
     if (!selectedDataset) return;
-    // Pre-fill with dataset name (without extension) + "_filtered"
     const baseName = selectedDataset.name.replace(/\.[^/.]+$/, '');
     setSaveAsFileName(`${baseName}_filtered`);
     setShowSaveAsModal(true);
@@ -770,7 +857,7 @@ export default function TallySetting() {
     console.log('💾 Saving filtered dataset as:', saveAsFileName.trim());
 
     try {
-      const url = `http://127.0.0.1:8000/save-filtered-to-prompt/?source_file=${encodeURIComponent(selectedDataset.name)}&new_file=${encodeURIComponent(saveAsFileName.trim())}`;
+      const url = `http://127.0.0.1:8000/dataframe-to-database/?file_name=${encodeURIComponent(selectedDataset.name)}&table_name=${encodeURIComponent(saveAsFileName.trim())}`;
 
       const response = await fetch(url, {
         method: 'POST',
@@ -786,18 +873,15 @@ export default function TallySetting() {
 
         showToast('success', `Dataset saved as "${saveAsFileName.trim()}" successfully! ✅`);
 
-        // Close Save As modal
         setShowSaveAsModal(false);
         setSaveAsFileName('');
 
-        // Exit preview mode
         setIsPreviewMode(false);
         setPreviewData(null);
         setCurrentFilterType(null);
         setSelectedTransformation(null);
         resetFilterForms();
 
-        // Refresh prompt datasets list and switch to Saved tab
         await fetchPromptDatasets();
         setActiveTab('saved');
 
@@ -813,6 +897,8 @@ export default function TallySetting() {
       setIsSavingAs(false);
     }
   };
+
+
 
   const fetchDatabaseTables = async (event: React.MouseEvent<HTMLButtonElement>) => {
     const buttonRect = event.currentTarget.getBoundingClientRect();
@@ -919,17 +1005,14 @@ export default function TallySetting() {
     }
   };
 
-  // Open a saved (prompt) dataset in the viewer
-  // Open a saved (prompt) dataset in the viewer
   const openPromptDatasetViewer = async (promptDataset: PromptDataset) => {
     try {
       setIsViewerOpen(true);
 
-      // Create a base dataset object with the metadata
       const dataset: UploadedDataset = {
         id: `prompt-${promptDataset.file_name}-${Date.now()}`,
         name: promptDataset.file_name,
-        type: 'csv', // Default type
+        type: 'csv',
         uploadDate: new Date(),
         rows: promptDataset.rows,
         columns: promptDataset.column_count,
@@ -942,7 +1025,6 @@ export default function TallySetting() {
 
       setSelectedDataset({ ...dataset, fullData: [] });
 
-      // Use the prompt/select/ endpoint to get the full data
       const apiUrl = `http://127.0.0.1:8000/prompt/select/?file_name=${encodeURIComponent(promptDataset.file_name)}`;
       const response = await fetch(apiUrl, {
         method: 'GET',
@@ -952,7 +1034,6 @@ export default function TallySetting() {
       if (response.ok) {
         const result = await response.json();
 
-        // The response contains both preview and full_data
         const fullData = result.full_data || result.preview || [];
         const columnHeaders = result.columns || [];
         const rows = result.rows || fullData.length;
@@ -967,7 +1048,6 @@ export default function TallySetting() {
 
         showToast('success', `Saved dataset loaded: ${rows} rows × ${columnHeaders.length} columns`);
       } else {
-        // Fallback to view-data if prompt endpoint fails
         const fallbackUrl = `http://127.0.0.1:8000/view-data/?file_name=${encodeURIComponent(promptDataset.file_name)}`;
         const fallbackResponse = await fetch(fallbackUrl, {
           method: 'GET',
@@ -1152,6 +1232,22 @@ export default function TallySetting() {
   const cancelFilterPreview = async () => {
     if (!selectedDataset) return;
     try {
+      // ── For rename/type_cast: backend already changed the data,
+      //    so we must undo before reloading ──
+      if (currentFilterType === 'rename_column' || currentFilterType === 'type_cast') {
+        const undoUrl = `http://127.0.0.1:8000/undo-latest/?file_name=${encodeURIComponent(selectedDataset.name)}`;
+        let undoResponse = await fetch(undoUrl, { method: 'POST', headers: { "X-API-Key": EXCEL_API_KEY } });
+        if (undoResponse.status === 405) undoResponse = await fetch(undoUrl, { method: 'PUT', headers: { "X-API-Key": EXCEL_API_KEY } });
+        if (undoResponse.status === 405) undoResponse = await fetch(undoUrl, { method: 'GET', headers: { "X-API-Key": EXCEL_API_KEY } });
+        if (undoResponse.ok) {
+          showToast('info', currentFilterType === 'rename_column'
+            ? 'Rename cancelled — column restored to original name'
+            : 'Type cast cancelled — column restored to original type');
+        } else {
+          showToast('warning', 'Could not auto-undo. Please use the Undo button.');
+        }
+      }
+
       const encodedFilename = encodeURIComponent(selectedDataset.name);
       const apiUrl = `http://127.0.0.1:8000/view-data/?file_name=${encodedFilename}`;
       const response = await fetch(apiUrl, { method: 'GET', headers: { "X-API-Key": EXCEL_API_KEY } });
@@ -1167,8 +1263,11 @@ export default function TallySetting() {
       setCurrentFilterType(null);
       setSortColumn(null);
       setSortOrder('asc');
+      setHasTransformations(false);
       resetFilterForms();
-      showToast('info', 'Preview cancelled - showing last saved state');
+      if (currentFilterType !== 'rename_column' && currentFilterType !== 'type_cast') {
+        showToast('info', 'Preview cancelled - showing last saved state');
+      }
     } catch (error) {
       showToast('error', 'Failed to cancel preview');
     }
@@ -1389,14 +1488,27 @@ export default function TallySetting() {
     } catch { return 'Invalid Date'; }
   };
 
-  const getColumnHeaders = (dataset: UploadedDataset): string[] => {
+  // ── Memoized: recomputes only when selectedDataset changes ──
+  const columnHeaders = useMemo(() => {
+    if (!selectedDataset) return [];
+    if (selectedDataset.columnHeaders && selectedDataset.columnHeaders.length > 0) return selectedDataset.columnHeaders;
+    if (!selectedDataset.fullData || selectedDataset.fullData.length === 0)
+      return Array.from({ length: selectedDataset.columns }, (_, i) => `Column ${i + 1}`);
+    if (Array.isArray(selectedDataset.fullData[0]))
+      return selectedDataset.fullData[0].map((_: any, index: number) => `Column ${index + 1}`);
+    return Object.keys(selectedDataset.fullData[0]);
+  }, [selectedDataset]);
+
+  // Keep the old function for passing datasets to dropdowns (forms still need it for any dataset)
+  const getColumnHeaders = useCallback((dataset: UploadedDataset): string[] => {
     if (dataset.columnHeaders && dataset.columnHeaders.length > 0) return dataset.columnHeaders;
     if (!dataset.fullData || dataset.fullData.length === 0) return Array.from({ length: dataset.columns }, (_, i) => `Column ${i + 1}`);
     if (Array.isArray(dataset.fullData[0])) return dataset.fullData[0].map((_: any, index: number) => `Column ${index + 1}`);
     return Object.keys(dataset.fullData[0]);
-  };
+  }, []);
 
-  const transformationOptions = [
+  // ── Static — never recreated ──
+  const transformationOptions = useMemo(() => [
     { id: 'rename_column', label: 'Rename Column', icon: <Type className="h-5 w-5" />, color: 'green' },
     { id: 'type_cast', label: 'Type Cast', icon: <FileText className="h-5 w-5" />, color: 'purple' },
     { id: 'group_and_aggregate', label: 'Group & Aggregate', icon: <Database className="h-5 w-5" />, color: 'orange' },
@@ -1405,7 +1517,66 @@ export default function TallySetting() {
     { id: 'filter_by_values', label: 'Filter by Values', icon: <Filter className="h-5 w-5" />, color: 'indigo' },
     { id: 'text_filter', label: 'Text Filter', icon: <Type className="h-5 w-5" />, color: 'blue' },
     { id: 'number_filter', label: 'Number Filter', icon: <Hash className="h-5 w-5" />, color: 'teal' }
-  ];
+  ], []);
+
+  // ── Virtual scroll state ──
+  const ROW_HEIGHT = 36;       // px per row
+  const OVERSCAN = 8;          // extra rows above/below visible area
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+  const [tableScrollTop, setTableScrollTop] = useState(0);
+  const [tableClientHeight, setTableClientHeight] = useState(600);
+
+  const handleTableScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    setTableScrollTop(e.currentTarget.scrollTop);
+    setTableClientHeight(e.currentTarget.clientHeight);
+  }, []);
+
+  const { virtualStart, virtualEnd, paddingTop, paddingBottom } = useMemo(() => {
+    if (!selectedDataset?.fullData) return { virtualStart: 0, virtualEnd: 0, paddingTop: 0, paddingBottom: 0 };
+    const total = selectedDataset.fullData.length;
+    const visibleCount = Math.ceil(tableClientHeight / ROW_HEIGHT);
+    const start = Math.max(0, Math.floor(tableScrollTop / ROW_HEIGHT) - OVERSCAN);
+    const end = Math.min(total, start + visibleCount + OVERSCAN * 2);
+    return {
+      virtualStart: start,
+      virtualEnd: end,
+      paddingTop: start * ROW_HEIGHT,
+      paddingBottom: Math.max(0, (total - end) * ROW_HEIGHT),
+    };
+  }, [tableScrollTop, tableClientHeight, selectedDataset?.fullData?.length]);
+
+  // ── Pinned horizontal scrollbar ──
+  const hScrollBarRef = useRef<HTMLDivElement>(null);
+  const hScrollInnerRef = useRef<HTMLDivElement>(null);
+  const [tableScrollWidth, setTableScrollWidth] = useState(0);
+  const isSyncingScroll = useRef(false);
+
+  // Measure the real scroll width whenever data changes
+  useEffect(() => {
+    if (tableScrollRef.current) {
+      setTableScrollWidth(tableScrollRef.current.scrollWidth);
+    }
+  }, [selectedDataset?.fullData, columnHeaders]);
+
+  // Sync: table → pinned bar
+  const handleTableScrollWithSync = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    setTableScrollTop(e.currentTarget.scrollTop);
+    setTableClientHeight(e.currentTarget.clientHeight);
+    if (!isSyncingScroll.current && hScrollBarRef.current) {
+      isSyncingScroll.current = true;
+      hScrollBarRef.current.scrollLeft = e.currentTarget.scrollLeft;
+      isSyncingScroll.current = false;
+    }
+  }, []);
+
+  // Sync: pinned bar → table
+  const handleHScrollBarScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (!isSyncingScroll.current && tableScrollRef.current) {
+      isSyncingScroll.current = true;
+      tableScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+      isSyncingScroll.current = false;
+    }
+  }, []);
 
   return (
     <div>
@@ -1420,10 +1591,10 @@ export default function TallySetting() {
         ))}
       </div>
 
-      <div className="p-6 space-y-8">
+      <div className="p-4 space-y-4">
         {/* Header */}
         <div className="flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-gray-900">External Datasets</h1>
+          <h1 className="text-lg font-bold text-gray-900">External Datasets</h1>
           <div className="flex space-x-3">
             <div className="relative tables-dropdown-container">
               <button onClick={fetchDatabaseTables} className="px-4 py-2 bg-purple-600 text-white rounded-lg flex items-center space-x-2 shadow-sm transition-colors duration-150 hover:bg-purple-700">
@@ -1469,9 +1640,7 @@ export default function TallySetting() {
           </div>
         </div>
 
-        {/* ============================================= */}
-        {/* TABS - Uploaded / Saved */}
-        {/* ============================================= */}
+        {/* TABS */}
         <div className="border-b border-gray-200">
           <nav className="flex space-x-0" aria-label="Tabs">
             <button
@@ -1487,25 +1656,10 @@ export default function TallySetting() {
                 {uploadedDatasets.length}
               </span>
             </button>
-            <button
-              onClick={() => { setActiveTab('saved'); fetchPromptDatasets(); }}
-              className={`px-6 py-3 text-sm font-semibold border-b-2 transition-colors duration-150 flex items-center gap-2 ${activeTab === 'saved'
-                ? 'border-emerald-600 text-emerald-600 bg-emerald-50'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-            >
-              <BookMarked className="h-4 w-4" />
-              Saved Datasets
-              <span className={`ml-1 px-2 py-0.5 rounded-full text-xs font-bold ${activeTab === 'saved' ? 'bg-emerald-600 text-white' : 'bg-gray-200 text-gray-600'}`}>
-                {promptDatasets.length}
-              </span>
-            </button>
           </nav>
         </div>
 
-        {/* ============================================= */}
         {/* TAB CONTENT - UPLOADED DATASETS */}
-        {/* ============================================= */}
         {activeTab === 'uploaded' && (
           <div className="mt-2">
             {loadingDatasets ? (
@@ -1543,88 +1697,6 @@ export default function TallySetting() {
                         <p className="text-xs text-gray-700 font-semibold">{formatDate(dataset.uploadDate)}</p>
                       </div>
                       <button onClick={() => openViewer(dataset)} className="w-full mt-4 px-4 py-3 bg-blue-600 text-white rounded-lg flex items-center justify-center space-x-2 hover:bg-blue-700 transition-colors duration-200 font-medium shadow-sm group-hover:shadow-md">
-                        <Eye className="h-4 w-4" /><span>View Dataset</span>
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ============================================= */}
-        {/* TAB CONTENT - SAVED DATASETS */}
-        {/* ============================================= */}
-        {activeTab === 'saved' && (
-          <div className="mt-2">
-            <div className="flex items-center justify-between mb-4">
-              {/* <p className="text-sm text-gray-600">Datasets saved via "Save As" from filtered/transformed data</p> */}
-              <button onClick={fetchPromptDatasets} disabled={loadingPromptDatasets} className="flex items-center gap-2 px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50">
-                <RefreshCw className={`h-4 w-4 text-gray-600 ${loadingPromptDatasets ? 'animate-spin' : ''}`} />
-                <span>Refresh</span>
-              </button>
-            </div>
-
-            {loadingPromptDatasets ? (
-              <div className="flex flex-col justify-center items-center h-64 border-2 border-dashed border-gray-300 rounded-lg">
-                <Loader2 className="h-12 w-12 animate-spin text-emerald-600 mb-4" />
-                <span className="text-lg text-gray-600">Loading saved datasets...</span>
-              </div>
-            ) : promptDatasets.length === 0 ? (
-              <div className="flex flex-col justify-center items-center h-64 border-2 border-dashed border-emerald-300 rounded-lg bg-emerald-50">
-                <BookMarked className="h-16 w-16 text-emerald-400 mb-4" />
-                <p className="text-gray-600 text-lg font-medium">No saved datasets yet</p>
-                <p className="text-gray-500 text-sm mt-2">Apply filters to a dataset, then use "Save As" in Preview Mode</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {promptDatasets.map((dataset, index) => (
-                  <div key={index} className="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 border-2 border-gray-200 hover:border-emerald-400 overflow-hidden group">
-                    <div className="p-5 border-b border-gray-200 bg-gradient-to-r from-emerald-50 to-white">
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-center space-x-3 flex-1 min-w-0">
-                          <div className="flex-shrink-0 p-1.5 bg-emerald-100 rounded-lg">
-                            <BookMarked className="w-5 h-5 text-emerald-600" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <h3 className="text-base font-bold text-gray-900 truncate" title={dataset.file_name}>{dataset.file_name}</h3>
-                            <p className="text-xs text-emerald-600 font-medium mt-0.5">Saved from: {dataset.created_from}</p>
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => { setPromptDatasetToDelete(dataset); setDeletePromptModalOpen(true); }}
-                          className="ml-2 p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all flex-shrink-0"
-                          title="Delete"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
-                    <div className="p-5 space-y-3">
-                      {/* <div className="grid grid-cols-2 gap-2">
-                        <div className="bg-blue-50 p-3 rounded-lg">
-                          <p className="text-xs text-blue-600 font-medium mb-1">Rows</p>
-                          <p className="text-lg font-bold text-blue-900">{dataset.rows.toLocaleString()}</p>
-                        </div>
-                        <div className="bg-purple-50 p-3 rounded-lg">
-                          <p className="text-xs text-purple-600 font-medium mb-1">Columns</p>
-                          <p className="text-lg font-bold text-purple-900">{dataset.column_count}</p>
-                        </div>
-                      </div> */}
-                      {/* Column names preview */}
-                      <div className="bg-gray-50 rounded-lg p-3">
-                        {/* <p className="text-xs text-gray-600 font-medium mb-2">Columns:</p>
-                        <div className="flex flex-wrap gap-1 max-h-16 overflow-hidden">
-                          {dataset.columns.slice(0, 6).map((col, colIdx) => (
-                            <span key={colIdx} className="px-2 py-0.5 bg-white text-xs text-gray-700 rounded border border-gray-200 truncate max-w-[80px]" title={col}>{col}</span>
-                          ))}
-                          {dataset.columns.length > 6 && (
-                            <span className="px-2 py-0.5 bg-gray-200 text-xs text-gray-600 rounded">+{dataset.columns.length - 6} more</span>
-                          )}
-                        </div> */}
-                      </div>
-                      <button onClick={() => openPromptDatasetViewer(dataset)} className="w-full mt-2 px-4 py-3 bg-emerald-600 text-white rounded-lg flex items-center justify-center space-x-2 hover:bg-emerald-700 transition-colors duration-200 font-medium shadow-sm group-hover:shadow-md">
                         <Eye className="h-4 w-4" /><span>View Dataset</span>
                       </button>
                     </div>
@@ -1796,13 +1868,10 @@ export default function TallySetting() {
           </div>
         )}
 
-        {/* ============================================= */}
         {/* SAVE AS MODAL */}
-        {/* ============================================= */}
         {showSaveAsModal && selectedDataset && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[110]">
             <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
-              {/* Modal Header */}
               <div className="px-6 py-4 bg-gradient-to-r from-emerald-600 to-emerald-700">
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-3">
@@ -1820,9 +1889,7 @@ export default function TallySetting() {
                 </div>
               </div>
 
-              {/* Modal Body */}
               <div className="px-6 py-5 space-y-5">
-                {/* Source Info */}
                 <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
                   <p className="text-xs text-gray-500 font-medium mb-1">Source Dataset</p>
                   <div className="flex items-center gap-2">
@@ -1837,7 +1904,6 @@ export default function TallySetting() {
                   )}
                 </div>
 
-                {/* File Name Input */}
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
                     New Dataset Name <span className="text-red-500">*</span>
@@ -1857,7 +1923,6 @@ export default function TallySetting() {
                   </p>
                 </div>
 
-                {/* Info box */}
                 <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 flex items-start gap-3">
                   <BookMarked className="h-5 w-5 text-emerald-600 flex-shrink-0 mt-0.5" />
                   <div className="text-sm text-emerald-800">
@@ -1872,7 +1937,6 @@ export default function TallySetting() {
                 </div>
               </div>
 
-              {/* Modal Footer */}
               <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end space-x-3">
                 <button
                   onClick={() => { setShowSaveAsModal(false); setSaveAsFileName(''); }}
@@ -1897,243 +1961,226 @@ export default function TallySetting() {
           </div>
         )}
 
-        {/* ============================================= */}
         {/* DATASET VIEWER MODAL - FULLSCREEN */}
-        {/* ============================================= */}
         {isViewerOpen && selectedDataset && (
           <div className="fixed inset-0 bg-white z-50 flex flex-col overflow-hidden">
             {/* Viewer Header */}
-            <div className="flex items-center justify-between px-6 py-3 border-b-2 border-gray-200 bg-gradient-to-r from-blue-50 to-white shadow-sm">
-             <div className="flex items-center gap-4">
-               {getFileIcon(selectedDataset.type)}
-               <div>
-                 <h3 className="text-xl font-bold text-gray-900">{selectedDataset.name}</h3>
-                 <p className="text-sm text-gray-600">
-                   {selectedDataset.rows > 0 ? (
-                     <>
-                     </>
-                   ) : (
-                     'Loading...'
-                   )}
-                 </p>
-               </div>
-               {/* Edit Dataset button moved here, next to the title */}
-               <button
-                 onClick={toggleEditPanel}
-                 className={`px-4 py-2 rounded-lg flex items-center gap-2 font-medium transition-all duration-200 ${isEditPanelOpen
-                   ? 'bg-blue-600 text-white shadow-md'
-                   : 'bg-white text-blue-600 border-2 border-blue-600 hover:bg-blue-50'
-                   }`}
-               >
-                 <Edit3 className="h-5 w-5" />
-                 <span>{isEditPanelOpen ? 'Close Edit' : 'Edit Dataset'}</span>
-               </button>
-             </div>
-             <div className="flex items-center gap-3">
-               <button
-                 onClick={closeViewer}
-                 className="p-2 rounded-lg hover:bg-red-50 hover:text-red-600 transition-all duration-200 group"
-                 title="Close viewer"
-               >
-                 <X className="w-6 h-6 text-gray-600 group-hover:text-red-600" />
-               </button>
-             </div>
-           </div>
+            <div className="flex items-center justify-between px-4 py-2 border-b-2 border-gray-200 bg-gradient-to-r from-blue-50 to-white shadow-sm">
+              <div className="flex items-center gap-3">
+                {getFileIcon(selectedDataset.type)}
+                <div>
+                  <h3 className="text-base font-bold text-gray-900">{selectedDataset.name}</h3>
+                  <p className="text-xs text-gray-600">
+                    {selectedDataset.rows > 0 ? (
+                      <></>
+                    ) : (
+                      'Loading...'
+                    )}
+                  </p>
+                </div>
+                <button
+                  onClick={toggleEditPanel}
+                  className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-sm font-medium transition-all duration-200 ${isEditPanelOpen
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : 'bg-white text-blue-600 border-2 border-blue-600 hover:bg-blue-50'
+                    }`}
+                >
+                  <Edit3 className="h-4 w-4" />
+                  <span>{isEditPanelOpen ? 'Close Edit' : 'Edit Dataset'}</span>
+                </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={closeViewer}
+                  className="p-1.5 rounded-lg hover:bg-red-50 hover:text-red-600 transition-all duration-200 group"
+                  title="Close viewer"
+                >
+                  <X className="w-5 h-5 text-gray-600 group-hover:text-red-600" />
+                </button>
+              </div>
+            </div>
 
             {/* Main Content */}
             <div className="flex-1 flex overflow-hidden">
               {/* Left Edit Panel */}
-             <div
-  className={`bg-gray-50 border-r-2 border-gray-200 transition-all duration-300 ease-in-out flex-shrink-0 ${
-    isEditPanelOpen ? 'w-72' : 'w-0'
-  } overflow-hidden`}
->
+              <div
+                className={`bg-gray-50 border-r-2 border-gray-200 transition-all duration-300 ease-in-out flex-shrink-0 ${isEditPanelOpen ? 'w-52' : 'w-0'
+                  } overflow-hidden`}
+              >
                 {isEditPanelOpen && (
-                 <div className="h-full flex flex-col w-72">
-                 
-                       {/* Sidebar Header with X Close Button */}
-                       <div className="flex items-center justify-between px-4 py-3 bg-white border-b-2 border-gray-200">
-                         <div className="flex items-center gap-2">
-                           <Edit3 className="h-4 w-4 text-blue-600" />
-                           <span className="text-sm font-bold text-gray-800">Edit Dataset</span>
-                         </div>
-                         <button
-                           onClick={toggleEditPanel}
-                           className="w-6 h-6 flex items-center justify-center rounded-full bg-gray-100 hover:bg-red-100 text-gray-500 hover:text-red-600 transition-all duration-200"
-                           title="Close"
-                         >
-                           <X className="h-3.5 w-3.5" />
-                         </button>
-                       </div>
-                 
-                       {/* Transformation Options */}
-                       <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
-                         {transformationOptions.map((option) => (
-                           <button
-                             key={option.id}
-                             onClick={() => handleTransformationSelect(option.id)}
-                             className={`w-full p-3 rounded-lg flex items-center gap-3 transition-all duration-200 text-left ${
-                               selectedTransformation === option.id
-                                 ? `bg-${option.color}-100 border-2 border-${option.color}-500 shadow-sm`
-                                 : 'bg-white border-2 border-gray-200 hover:border-gray-300 hover:shadow-sm hover:bg-gray-50'
-                             }`}
-                           >
-                             <div
-                               className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                                 selectedTransformation === option.id
-                                   ? `bg-${option.color}-200 text-${option.color}-700`
-                                   : `bg-${option.color}-50 text-${option.color}-500`
-                               }`}
-                             >
-                               {option.icon}
-                             </div>
-                             <span className={`text-sm font-medium ${
-                               selectedTransformation === option.id ? 'text-gray-900' : 'text-gray-700'
-                             }`}>
-                               {option.label}
-                             </span>
-                           </button>
-                         ))}
-                       </div>
-                 
-                     </div>
+                  <div className="h-full flex flex-col w-52">
+                    <div className="flex items-center justify-between px-3 py-2 bg-white border-b-2 border-gray-200">
+                      <div className="flex items-center gap-1.5">
+                        <Edit3 className="h-3.5 w-3.5 text-blue-600" />
+                        <span className="text-xs font-bold text-gray-800">Edit Dataset</span>
+                      </div>
+                      <button
+                        onClick={toggleEditPanel}
+                        className="w-5 h-5 flex items-center justify-center rounded-full bg-gray-100 hover:bg-red-100 text-gray-500 hover:text-red-600 transition-all duration-200"
+                        title="Close"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                      {transformationOptions.map((option) => (
+                        <button
+                          key={option.id}
+                          onClick={() => handleTransformationSelect(option.id)}
+                          className={`w-full p-2 rounded-md flex items-center gap-2 transition-all duration-200 text-left ${selectedTransformation === option.id
+                            ? `bg-${option.color}-100 border-2 border-${option.color}-500 shadow-sm`
+                            : 'bg-white border-2 border-gray-200 hover:border-gray-300 hover:shadow-sm hover:bg-gray-50'
+                            }`}
+                        >
+                          <div
+                            className={`w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 ${selectedTransformation === option.id
+                              ? `bg-${option.color}-200 text-${option.color}-700`
+                              : `bg-${option.color}-50 text-${option.color}-500`
+                              }`}
+                          >
+                            {option.icon}
+                          </div>
+                          <span className={`text-xs font-medium ${selectedTransformation === option.id ? 'text-gray-900' : 'text-gray-700'
+                            }`}>
+                            {option.label}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 )}
               </div>
-              
-{/* Slim Toggle Strip - visible when sidebar is CLOSED */}
-{!isEditPanelOpen && (
-  <button
-    onClick={toggleEditPanel}
-    className="flex-shrink-0 w-9 bg-white border-r-2 border-gray-200 flex flex-col items-center justify-start pt-4 gap-1 hover:bg-blue-50 transition-colors group"
-    title="Open Edit Panel"
-  >
-    <div className="w-6 h-6 rounded-md bg-blue-100 group-hover:bg-blue-200 flex items-center justify-center transition-colors">
-      <svg
-        className="w-3.5 h-3.5 text-blue-600"
-        fill="none"
-        stroke="currentColor"
-        viewBox="0 0 24 24"
-      >
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-      </svg>
-    </div>
-    <span
-      className="text-xs font-semibold text-blue-600 mt-2"
-      style={{ writingMode: 'vertical-rl', textOrientation: 'mixed', transform: 'rotate(180deg)' }}
-    >
-      
-    </span>
-  </button>
-)}
+
+              {/* Slim Toggle Strip */}
+              {!isEditPanelOpen && (
+                <button
+                  onClick={toggleEditPanel}
+                  className="flex-shrink-0 w-9 bg-white border-r-2 border-gray-200 flex flex-col items-center justify-start pt-4 gap-1 hover:bg-blue-50 transition-colors group"
+                  title="Open Edit Panel"
+                >
+                  <div className="w-6 h-6 rounded-md bg-blue-100 group-hover:bg-blue-200 flex items-center justify-center transition-colors">
+                    <svg className="w-3.5 h-3.5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                </button>
+              )}
 
               {/* Middle - Table */}
               <div className="flex-1 flex flex-col overflow-hidden">
                 {/* Stats Bar */}
                 {selectedDataset.rows > 0 && (
-                  <div className="flex items-center gap-4 px-6 py-3 bg-gray-50 border-b border-gray-200 flex-wrap">
-                    <div className="flex items-center gap-2 px-4 py-2 bg-blue-100 rounded-lg">
-                      <div className="text-sm font-medium text-blue-700">Rows:</div>
-                      <div className="text-lg font-bold text-blue-600">{selectedDataset.rows.toLocaleString()}</div>
+                  <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 border-b border-gray-200 flex-wrap">
+                    <div className="flex items-center gap-1.5 px-3 py-1 bg-blue-100 rounded-md">
+                      <div className="text-xs font-medium text-blue-700">Rows:</div>
+                      <div className="text-sm font-bold text-blue-600">{selectedDataset.rows.toLocaleString()}</div>
                     </div>
-                    <div className="flex items-center gap-2 px-4 py-2 bg-green-100 rounded-lg">
-                      <div className="text-sm font-medium text-green-700">Columns:</div>
-                      <div className="text-lg font-bold text-green-600">{selectedDataset.columns}</div>
+                    <div className="flex items-center gap-1.5 px-3 py-1 bg-green-100 rounded-md">
+                      <div className="text-xs font-medium text-green-700">Columns:</div>
+                      <div className="text-sm font-bold text-green-600">{selectedDataset.columns}</div>
                     </div>
                     {sortColumn && !isPreviewMode && (
-                      <button onClick={() => { setSortColumn(null); setSortOrder('asc'); refreshCurrentDataset(); }} className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
-                        <X className="h-4 w-4 text-gray-700" /><div className="text-sm font-medium text-gray-700">Clear Sort</div>
+                      <button onClick={() => { setSortColumn(null); setSortOrder('asc'); refreshCurrentDataset(); }} className="flex items-center gap-1 px-3 py-1 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors">
+                        <X className="h-3 w-3 text-gray-700" /><div className="text-xs font-medium text-gray-700">Clear Sort</div>
                       </button>
                     )}
                     {!isPreviewMode && (
-                      <button onClick={fetchFilterPreview} disabled={!hasTransformations} className="flex items-center gap-2 px-4 py-2 bg-yellow-100 rounded-lg hover:bg-yellow-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                        <Eye className="h-4 w-4 text-yellow-700" /><div className="text-sm font-medium text-yellow-700">Preview Changes</div>
+                      <button onClick={fetchFilterPreview} disabled={!hasTransformations} className="flex items-center gap-1 px-3 py-1 bg-yellow-100 rounded-md hover:bg-yellow-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                        <Eye className="h-3 w-3 text-yellow-700" /><div className="text-xs font-medium text-yellow-700">Preview Changes</div>
                       </button>
                     )}
-                    <button onClick={handleUndo} disabled={isUndoing || !hasTransformations} className="flex items-center gap-2 px-4 py-2 bg-purple-100 rounded-lg hover:bg-purple-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                      {isUndoing ? <><Loader2 className="h-4 w-4 animate-spin text-purple-700" /><div className="text-sm font-medium text-purple-700">Undoing...</div></> : <><RotateCcw className="h-4 w-4 text-purple-700" /><div className="text-sm font-medium text-purple-700">Undo</div></>}
+                    <button onClick={handleUndo} disabled={isUndoing || !hasTransformations} className="flex items-center gap-1 px-3 py-1 bg-purple-100 rounded-md hover:bg-purple-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                      {isUndoing ? <><Loader2 className="h-3 w-3 animate-spin text-purple-700" /><div className="text-xs font-medium text-purple-700">Undoing...</div></> : <><RotateCcw className="h-3 w-3 text-purple-700" /><div className="text-xs font-medium text-purple-700">Undo</div></>}
                     </button>
-                    <button onClick={() => setShowResetModal(true)} disabled={!hasTransformations} className="flex items-center gap-2 px-4 py-2 bg-red-100 rounded-lg hover:bg-red-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                      <RefreshCw className="h-4 w-4 text-red-700" /><div className="text-sm font-medium text-red-700">Reset</div>
+                    <button onClick={() => setShowResetModal(true)} disabled={!hasTransformations} className="flex items-center gap-1 px-3 py-1 bg-red-100 rounded-md hover:bg-red-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                      <RefreshCw className="h-3 w-3 text-red-700" /><div className="text-xs font-medium text-red-700">Reset</div>
                     </button>
-                    {/* ── SAVE AS BUTTON — lives next to Reset, always visible ── */}
-                    <button onClick={openSaveAsModal} disabled={isSavingAs || !hasTransformations} className="flex items-center gap-2 px-4 py-2 bg-emerald-100 rounded-lg hover:bg-emerald-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                      {isSavingAs ? <><Loader2 className="h-4 w-4 animate-spin text-emerald-700" /><div className="text-sm font-medium text-emerald-700">Saving As...</div></> : <><SaveAll className="h-4 w-4 text-emerald-700" /><div className="text-sm font-medium text-emerald-700">Save As</div></>}
+                    <button onClick={openSaveAsModal} disabled={isSavingAs || !hasTransformations || currentFilterType === 'rename_column' || currentFilterType === 'type_cast'} className="flex items-center gap-1 px-3 py-1 bg-emerald-100 rounded-md hover:bg-emerald-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                      {isSavingAs ? <><Loader2 className="h-3 w-3 animate-spin text-emerald-700" /><div className="text-xs font-medium text-emerald-700">Saving As...</div></> : <><SaveAll className="h-3 w-3 text-emerald-700" /><div className="text-xs font-medium text-emerald-700">Save As</div></>}
                     </button>
                   </div>
                 )}
 
                 {/* Preview Mode Banner */}
                 {isPreviewMode && previewData && (
-                  <div className="px-6 py-4 bg-yellow-50 border-b-2 border-yellow-300">
-                    <div className="space-y-3">
+                  <div className="px-4 py-2 bg-yellow-50 border-b-2 border-yellow-300">
+                    <div className="space-y-2">
+                      {/* Top row: icon + title + buttons */}
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 bg-yellow-200 rounded-full"><AlertTriangle className="h-6 w-6 text-yellow-700" /></div>
+                        <div className="flex items-center gap-2">
+                          <div className="p-1 bg-yellow-200 rounded-full"><AlertTriangle className="h-4 w-4 text-yellow-700" /></div>
                           <div>
-                            <p className="text-base font-bold text-yellow-900">🔍 Preview Mode - Changes Not Saved</p>
-                            <p className="text-xs text-yellow-700 mt-1">Review filtered data below. Use "Save" to overwrite, or "Save As" (in the bar above) to create a new dataset.</p>
+                            <p className="text-sm font-bold text-yellow-900">🔍 Preview Mode — Changes Not Saved</p>
+                            <p className="text-xs text-yellow-700">
+                              {currentFilterType === 'rename_column'
+                                ? 'Column renamed. Click "Save" to confirm or "Cancel" to undo.'
+                                : currentFilterType === 'type_cast'
+                                ? 'Type cast applied. Click "Save" to confirm or "Cancel" to undo.'
+                                : 'Use "Save" to overwrite, or "Save As" in the bar above to create a new dataset.'}
+                            </p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <button onClick={cancelFilterPreview} disabled={isSavingFilter} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center gap-2 disabled:opacity-50 shadow-sm">
-                            <X className="h-4 w-4" /><span className="font-medium">Cancel</span>
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          <button onClick={cancelFilterPreview} disabled={isSavingFilter} className="px-3 py-1.5 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors flex items-center gap-1 disabled:opacity-50 text-xs font-medium">
+                            <X className="h-3 w-3" /><span>Cancel</span>
                           </button>
-                          {/* SAVE (overwrite) */}
-                          <button onClick={saveCurrentFilter} disabled={isSavingFilter} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-50 shadow-sm">
-                            {isSavingFilter ? (<><Loader2 className="h-4 w-4 animate-spin" /><span className="font-medium">Saving...</span></>) : (<><Save className="h-4 w-4" /><span className="font-medium">Save</span></>)}
+                          <button onClick={saveCurrentFilter} disabled={isSavingFilter} className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center gap-1 disabled:opacity-50 text-xs font-medium">
+                            {isSavingFilter ? (<><Loader2 className="h-3 w-3 animate-spin" /><span>Saving...</span></>) : (<><Save className="h-3 w-3" /><span>Save</span></>)}
                           </button>
                         </div>
                       </div>
 
-                      {/* Statistics Grid */}
-                      <div className="grid grid-cols-4 gap-3">
-                        <div className="bg-white rounded-lg p-3 border-2 border-yellow-300 shadow-sm">
-                          <p className="text-xs text-gray-600 font-medium mb-1">Current Rows</p>
-                          <p className="text-2xl font-bold text-blue-600">{previewData.rows?.toLocaleString() || 0}</p>
+                      {/* Stats row — compact single line */}
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1 px-2 py-1 bg-white rounded border border-yellow-300 text-xs">
+                          <span className="text-gray-500">Rows:</span>
+                          <span className="font-bold text-blue-600">{previewData.rows?.toLocaleString() || 0}</span>
                         </div>
-                        <div className="bg-white rounded-lg p-3 border-2 border-yellow-300 shadow-sm">
-                          <p className="text-xs text-gray-600 font-medium mb-1">Filtered Out</p>
-                          <p className="text-2xl font-bold text-red-600">{previewData.dropped_rows?.toLocaleString() || 0}</p>
+                        <div className="flex items-center gap-1 px-2 py-1 bg-white rounded border border-yellow-300 text-xs">
+                          <span className="text-gray-500">Filtered:</span>
+                          <span className="font-bold text-red-600">{previewData.dropped_rows?.toLocaleString() || 0}</span>
                         </div>
-                        <div className="bg-white rounded-lg p-3 border-2 border-yellow-300 shadow-sm">
-                          <p className="text-xs text-gray-600 font-medium mb-1">Original Total</p>
-                          <p className="text-2xl font-bold text-gray-600">{((previewData.rows || 0) + (previewData.dropped_rows || 0)).toLocaleString()}</p>
+                        <div className="flex items-center gap-1 px-2 py-1 bg-white rounded border border-yellow-300 text-xs">
+                          <span className="text-gray-500">Total:</span>
+                          <span className="font-bold text-gray-600">{((previewData.rows || 0) + (previewData.dropped_rows || 0)).toLocaleString()}</span>
                         </div>
-                        <div className="bg-white rounded-lg p-3 border-2 border-yellow-300 shadow-sm">
-                          <p className="text-xs text-gray-600 font-medium mb-1">Retention Rate</p>
-                          <p className="text-2xl font-bold text-green-600">
+                        <div className="flex items-center gap-1 px-2 py-1 bg-white rounded border border-yellow-300 text-xs">
+                          <span className="text-gray-500">Kept:</span>
+                          <span className="font-bold text-green-600">
                             {previewData.rows && (previewData.rows + (previewData.dropped_rows || 0)) > 0
                               ? `${((previewData.rows / (previewData.rows + (previewData.dropped_rows || 0))) * 100).toFixed(1)}%`
                               : '0%'}
-                          </p>
+                          </span>
                         </div>
-                      </div>
-
-                      {currentFilterType && (
-                        <div className="bg-white rounded-lg p-3 border-2 border-yellow-300">
-                          <p className="text-xs text-gray-600 font-medium mb-1">Active Transformation:</p>
-                          <p className="text-sm font-bold text-gray-900">
-                            {currentFilterType === 'sort'
-                              ? `SORT: ${previewData?.sort_column} (${previewData?.sort_order === 'asc' ? '↑ Ascending' : '↓ Descending'})`
-                              : currentFilterType.replace(/_/g, ' ').toUpperCase()}
-                          </p>
-                        </div>
-                      )}
-
-                      <div className="bg-yellow-200 border-2 border-yellow-400 rounded-lg p-3">
-                        <p className="text-xs text-yellow-900 font-medium flex items-center gap-2">
-                          <AlertTriangle className="h-4 w-4" />
-                          <strong>Tip:</strong> Use <strong>"Save"</strong> to overwrite the current file, or use the <strong>"Save As"</strong> button in the stats bar above to create a new named dataset.
-                        </p>
+                        {currentFilterType && (
+                          <div className="flex items-center gap-1 px-2 py-1 bg-white rounded border border-yellow-300 text-xs flex-1 min-w-0">
+                            <span className="text-gray-500 flex-shrink-0">Transform:</span>
+                            <span className="font-bold text-gray-900 truncate">
+                              {currentFilterType === 'sort'
+                                ? `SORT: ${previewData?.sort_column} (${previewData?.sort_order === 'asc' ? '↑' : '↓'})`
+                                : currentFilterType === 'rename_column'
+                                ? `RENAME: '${previewData?.old_column}' → '${previewData?.new_column}'`
+                                : currentFilterType === 'type_cast'
+                                ? `CAST: '${previewData?.cast_column}' → ${previewData?.cast_type}`
+                                : currentFilterType.replace(/_/g, ' ').toUpperCase()}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
                 )}
 
-                {/* Table */}
+                {/* Table — Virtual Scroll: only renders visible rows */}
                 <div className="flex-1 overflow-hidden bg-gray-100">
                   {selectedDataset.fullData && selectedDataset.fullData.length > 0 ? (
-                    <div className="h-full overflow-auto">
+                    <div
+                      ref={tableScrollRef}
+                      className="h-full overflow-auto"
+                      style={{ overflowX: 'hidden' }}
+                      onScroll={handleTableScrollWithSync}
+                    >
                       {isSelectingColumns && (
                         <div className="sticky top-0 z-30 bg-yellow-50 border-b border-yellow-200 px-4 py-3">
                           <div className="flex items-center justify-between">
@@ -2142,7 +2189,7 @@ export default function TallySetting() {
                                 <input type="checkbox" checked={areAllColumnsSelected()} onChange={toggleSelectAll} className="h-4 w-4 text-blue-600 rounded focus:ring-blue-500" />
                                 <span className="text-sm font-medium text-gray-700">{areAllColumnsSelected() ? 'Deselect All' : 'Select All'}</span>
                               </div>
-                              <span className="text-sm text-gray-600">{selectedColumns.size} of {getColumnHeaders(selectedDataset).length} columns selected</span>
+                              <span className="text-sm text-gray-600">{selectedColumns.size} of {columnHeaders.length} columns selected</span>
                             </div>
                             <div className="flex items-center gap-2">
                               <button onClick={() => setIsSelectingColumns(false)} className="px-3 py-1 text-sm bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors">Cancel</button>
@@ -2154,28 +2201,31 @@ export default function TallySetting() {
                       <table className="min-w-full bg-white border-collapse">
                         <thead className="sticky top-0 z-10 shadow-md">
                           <tr className="bg-gradient-to-r from-gray-800 to-gray-700">
-                            <th className="px-4 py-3 text-left text-xs font-bold text-white border-r border-gray-600 bg-gray-900 sticky left-0 z-20 min-w-[60px]">
+                            <th className="px-3 py-2 text-left text-xs font-bold text-white border-r border-gray-600 bg-gray-900 sticky left-0 z-20 min-w-[50px]">
                               {!isSelectingColumns && (
                                 <div className="flex items-center justify-between">
                                   <span>#</span>
-                                  <button onClick={() => setIsSelectingColumns(true)} className="ml-2 p-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors" title="Select columns to edit">Select</button>
+                                  <button onClick={() => setIsSelectingColumns(true)} className="ml-1 p-0.5 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors" title="Select columns to edit">Sel</button>
                                 </div>
                               )}
                             </th>
-                            {getColumnHeaders(selectedDataset).map((header, index) => (
-                              <th key={index} className="px-6 py-3 text-left text-sm font-semibold text-white border-r border-gray-600 whitespace-nowrap min-w-[150px] group relative">
+                            {columnHeaders.map((header, index) => (
+                              <th key={index} className="px-4 py-2 text-left text-xs font-semibold text-white border-r border-gray-600 whitespace-nowrap min-w-[130px] group relative">
                                 <div className="flex items-center justify-between gap-2">
                                   <div className="flex items-center gap-2 flex-1">
                                     {isSelectingColumns && (
                                       <input type="checkbox" checked={selectedColumns.has(header)} onChange={(e) => { e.stopPropagation(); toggleColumnSelection(header); }} className="h-4 w-4 text-blue-600 rounded focus:ring-blue-500" onClick={(e) => e.stopPropagation()} />
                                     )}
-                                    <span className={`flex-1 cursor-pointer ${isSelectingColumns ? selectedColumns.has(header) ? 'text-yellow-300 font-bold' : 'text-gray-300' : sortColumn === header ? 'text-blue-300 font-bold' : ''}`}
-                                      onClick={() => !isSelectingColumns && handleColumnSort(header)} title={`Click to sort by ${header}`}>{header}</span>
+                                    <span
+                                      className={`flex-1 cursor-pointer ${isSelectingColumns ? selectedColumns.has(header) ? 'text-yellow-300 font-bold' : 'text-gray-300' : sortColumn === header ? 'text-blue-300 font-bold' : ''}`}
+                                      onClick={() => !isSelectingColumns && handleColumnSort(header)}
+                                      title={`Click to sort by ${header}`}
+                                    >{header}</span>
                                   </div>
                                   <div className="flex items-center gap-1">
                                     {!isSelectingColumns && (
                                       <div className="opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer" onClick={() => handleColumnSort(header)}>
-                                        <SortIndicator columnName={header} />
+                                        <SortIndicator columnName={header} sortColumn={sortColumn} sortOrder={sortOrder} />
                                       </div>
                                     )}
                                     {!isSelectingColumns && (
@@ -2190,16 +2240,29 @@ export default function TallySetting() {
                           </tr>
                         </thead>
                         <tbody>
-                          {selectedDataset.fullData.map((row, rowIndex) => (
-                            <tr key={rowIndex} className={`${rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-blue-50 transition-colors border-b border-gray-200`}>
-                              <td className="px-4 py-3 text-xs text-gray-600 font-semibold border-r border-gray-200 bg-gray-100 sticky left-0 z-10 text-center">{rowIndex + 1}</td>
-                              {getColumnHeaders(selectedDataset).map((header, cellIndex) => (
-                                <td key={cellIndex} className={`px-6 py-3 text-sm text-gray-800 border-r border-gray-200 whitespace-nowrap ${isSelectingColumns && selectedColumns.has(header) ? 'bg-yellow-50 border-yellow-200' : ''}`}>
-                                  {String(row[header] !== undefined && row[header] !== null ? row[header] : '')}
-                                </td>
-                              ))}
+                          {paddingTop > 0 && (
+                            <tr style={{ height: paddingTop }}>
+                              <td colSpan={columnHeaders.length + 1} />
                             </tr>
-                          ))}
+                          )}
+                          {selectedDataset.fullData.slice(virtualStart, virtualEnd).map((row, i) => {
+                            const rowIndex = virtualStart + i;
+                            return (
+                              <tr key={rowIndex} className={`${rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-blue-50 transition-colors border-b border-gray-200`} style={{ height: ROW_HEIGHT }}>
+                                <td className="px-3 py-1 text-xs text-gray-600 font-semibold border-r border-gray-200 bg-gray-100 sticky left-0 z-10 text-center">{rowIndex + 1}</td>
+                                {columnHeaders.map((header, cellIndex) => (
+                                  <td key={cellIndex} className={`px-4 py-1 text-xs text-gray-800 border-r border-gray-200 whitespace-nowrap ${isSelectingColumns && selectedColumns.has(header) ? 'bg-yellow-50 border-yellow-200' : ''}`}>
+                                    {String(row[header] !== undefined && row[header] !== null ? row[header] : '')}
+                                  </td>
+                                ))}
+                              </tr>
+                            );
+                          })}
+                          {paddingBottom > 0 && (
+                            <tr style={{ height: paddingBottom }}>
+                              <td colSpan={columnHeaders.length + 1} />
+                            </tr>
+                          )}
                         </tbody>
                       </table>
                     </div>
@@ -2211,12 +2274,24 @@ export default function TallySetting() {
                   )}
                 </div>
 
+                {/* ── Pinned horizontal scrollbar — ALWAYS at bottom, never scrolls away ── */}
+                {selectedDataset.fullData && selectedDataset.fullData.length > 0 && (
+                  <div
+                    ref={hScrollBarRef}
+                    className="flex-shrink-0 overflow-x-auto overflow-y-hidden pinned-hscroll"
+                    style={{ height: 20 }}
+                    onScroll={handleHScrollBarScroll}
+                  >
+                    <div style={{ width: tableScrollWidth, height: 1 }} />
+                  </div>
+                )}
+
                 {/* Footer */}
                 {selectedDataset.fullData && selectedDataset.fullData.length > 0 && (
-                  <div className="px-6 py-3 bg-gray-800 text-white border-t border-gray-700 flex items-center justify-between">
-                    <div className="flex items-center gap-6 text-sm">
-                      <span className="flex items-center gap-2"><FileSpreadsheet className="h-4 w-4" /><strong>Dataset:</strong> {selectedDataset.name}</span>
-                      <span className="flex items-center gap-2"><Database className="h-4 w-4" /><strong>Total Records:</strong> {selectedDataset.rows.toLocaleString()}</span>
+                  <div className="px-4 py-2 bg-gray-800 text-white border-t border-gray-700 flex items-center justify-between">
+                    <div className="flex items-center gap-4 text-xs">
+                      <span className="flex items-center gap-1.5"><FileSpreadsheet className="h-3 w-3" /><strong>Dataset:</strong> {selectedDataset.name}</span>
+                      <span className="flex items-center gap-1.5"><Database className="h-3 w-3" /><strong>Total Records:</strong> {selectedDataset.rows.toLocaleString()}</span>
                     </div>
                   </div>
                 )}
@@ -2224,13 +2299,12 @@ export default function TallySetting() {
 
               {/* Right Form Panel */}
               <div
-                className={`bg-white border-l-2 border-gray-200 transition-all duration-300 ease-in-out ${selectedTransformation ? 'w-96' : 'w-0'
+                className={`bg-white border-l-2 border-gray-200 transition-all duration-300 ease-in-out ${selectedTransformation ? 'w-80' : 'w-0'
                   } overflow-hidden`}
               >
                 {/* RENAME COLUMN FORM */}
                 {selectedTransformation === 'rename_column' && (
                   <div className="h-full flex flex-col">
-                    {/* Form Header */}
                     <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-green-50 to-white">
                       <div className="flex items-center gap-2">
                         <Type className="h-6 w-6 text-green-600" />
@@ -2239,24 +2313,17 @@ export default function TallySetting() {
                       <p className="text-sm text-gray-600 mt-1">Change a column's name</p>
                     </div>
 
-                    {/* Form Content */}
                     <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                      {/* File Name Display */}
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Dataset Name
-                        </label>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Dataset Name</label>
                         <div className="px-4 py-3 bg-gray-100 rounded-lg border border-gray-300">
                           <div className="flex items-center gap-2">
                             {getFileIcon(selectedDataset.type)}
-                            <span className="text-sm font-semibold text-gray-900">
-                              {selectedDataset.name}
-                            </span>
+                            <span className="text-sm font-semibold text-gray-900">{selectedDataset.name}</span>
                           </div>
                         </div>
                       </div>
 
-                      {/* Old Column Name Dropdown */}
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                           Select Column to Rename <span className="text-red-500">*</span>
@@ -2268,14 +2335,11 @@ export default function TallySetting() {
                         >
                           <option value="">-- Select a column --</option>
                           {getColumnHeaders(selectedDataset).map((header, index) => (
-                            <option key={index} value={header}>
-                              {header}
-                            </option>
+                            <option key={index} value={header}>{header}</option>
                           ))}
                         </select>
                       </div>
 
-                      {/* New Column Name Input */}
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                           New Column Name <span className="text-red-500">*</span>
@@ -2289,23 +2353,21 @@ export default function TallySetting() {
                         />
                       </div>
 
-                      {/* Info Box */}
                       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                         <div className="flex items-start gap-2">
                           <AlertTriangle className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
                           <div className="text-sm text-blue-800">
-                            <p className="font-medium mb-1">Important:</p>
+                            <p className="font-medium mb-1">How it works:</p>
                             <ul className="list-disc list-inside space-y-1 text-xs">
-                              <li>This will rename the column in the original dataset</li>
-                              <li>The change will be reflected immediately</li>
-                              <li>Make sure the new name doesn't already exist</li>
+                              <li>Click "Preview Rename" to see the new column name in the table</li>
+                              <li>Review the change in the preview banner</li>
+                              <li>Click "Save" in the banner to permanently save, or "Cancel" to undo</li>
                             </ul>
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    {/* Form Footer */}
                     <div className="p-6 border-t border-gray-200 bg-gray-50 space-y-3">
                       <button
                         onClick={handleRenameColumn}
@@ -2313,23 +2375,13 @@ export default function TallySetting() {
                         className="w-full px-6 py-3 bg-green-600 text-white rounded-lg flex items-center justify-center gap-2 hover:bg-green-700 transition-colors font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {isRenamingColumn ? (
-                          <>
-                            <Loader2 className="h-5 w-5 animate-spin" />
-                            <span>Renaming & Saving...</span>
-                          </>
+                          <><Loader2 className="h-5 w-5 animate-spin" /><span>Applying Rename...</span></>
                         ) : (
-                          <>
-                            <Save className="h-5 w-5" />
-                            <span>Save Changes</span>
-                          </>
+                          <><Eye className="h-5 w-5" /><span>Preview Rename</span></>
                         )}
                       </button>
                       <button
-                        onClick={() => {
-                          setSelectedTransformation(null);
-                          setRenameOldColumn('');
-                          setRenameNewColumn('');
-                        }}
+                        onClick={() => { setSelectedTransformation(null); setRenameOldColumn(''); setRenameNewColumn(''); }}
                         disabled={isRenamingColumn}
                         className="w-full px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium disabled:opacity-50"
                       >
@@ -2342,7 +2394,6 @@ export default function TallySetting() {
                 {/* TYPE CAST FORM */}
                 {selectedTransformation === 'type_cast' && (
                   <div className="h-full flex flex-col">
-                    {/* Form Header */}
                     <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-white">
                       <div className="flex items-center gap-2">
                         <FileText className="h-6 w-6 text-purple-600" />
@@ -2351,24 +2402,17 @@ export default function TallySetting() {
                       <p className="text-sm text-gray-600 mt-1">Convert column data type</p>
                     </div>
 
-                    {/* Form Content */}
                     <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                      {/* File Name Display */}
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Dataset Name
-                        </label>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Dataset Name</label>
                         <div className="px-4 py-3 bg-gray-100 rounded-lg border border-gray-300">
                           <div className="flex items-center gap-2">
                             {getFileIcon(selectedDataset.type)}
-                            <span className="text-sm font-semibold text-gray-900">
-                              {selectedDataset.name}
-                            </span>
+                            <span className="text-sm font-semibold text-gray-900">{selectedDataset.name}</span>
                           </div>
                         </div>
                       </div>
 
-                      {/* Column Name Dropdown */}
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                           Select Column <span className="text-red-500">*</span>
@@ -2380,14 +2424,11 @@ export default function TallySetting() {
                         >
                           <option value="">-- Select a column --</option>
                           {getColumnHeaders(selectedDataset).map((header, index) => (
-                            <option key={index} value={header}>
-                              {header}
-                            </option>
+                            <option key={index} value={header}>{header}</option>
                           ))}
                         </select>
                       </div>
 
-                      {/* Data Type Dropdown */}
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                           Convert To <span className="text-red-500">*</span>
@@ -2400,14 +2441,12 @@ export default function TallySetting() {
                           <option value="">-- Select data type --</option>
                           <option value="int">Integer (int)</option>
                           <option value="float">Float (float)</option>
-                          <option value="string">String (str)</option>
-                          <option value="bool">Boolean (bool)</option>
+                          <option value="str">String (str)</option>
+                          <option value="date">Date (date)</option>
                           <option value="datetime">DateTime (datetime)</option>
-                          <option value="category">Category (category)</option>
                         </select>
                       </div>
 
-                      {/* Info Box */}
                       <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                         <div className="flex items-start gap-2">
                           <AlertTriangle className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
@@ -2423,20 +2462,18 @@ export default function TallySetting() {
                         </div>
                       </div>
 
-                      {/* Type Examples */}
                       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                        <p className="text-sm font-medium text-blue-900 mb-2">Common Use Cases:</p>
+                        <p className="text-sm font-medium text-blue-900 mb-2">Supported Types:</p>
                         <ul className="text-xs text-blue-800 space-y-1">
                           <li><strong>int:</strong> Whole numbers (1, 2, 3)</li>
                           <li><strong>float:</strong> Decimal numbers (1.5, 2.7)</li>
-                          <li><strong>string:</strong> Text data</li>
-                          <li><strong>bool:</strong> True/False values</li>
+                          <li><strong>str:</strong> Text / string data</li>
+                          <li><strong>date:</strong> Date only (YYYY-MM-DD)</li>
                           <li><strong>datetime:</strong> Date and time values</li>
                         </ul>
                       </div>
                     </div>
 
-                    {/* Form Footer */}
                     <div className="p-6 border-t border-gray-200 bg-gray-50 space-y-3">
                       <button
                         onClick={handleTypeCast}
@@ -2444,23 +2481,13 @@ export default function TallySetting() {
                         className="w-full px-6 py-3 bg-purple-600 text-white rounded-lg flex items-center justify-center gap-2 hover:bg-purple-700 transition-colors font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {isTypeCasting ? (
-                          <>
-                            <Loader2 className="h-5 w-5 animate-spin" />
-                            <span>Converting...</span>
-                          </>
+                          <><Loader2 className="h-5 w-5 animate-spin" /><span>Applying...</span></>
                         ) : (
-                          <>
-                            <Save className="h-5 w-5" />
-                            <span>Convert Type</span>
-                          </>
+                          <><Eye className="h-5 w-5" /><span>Preview Cast</span></>
                         )}
                       </button>
                       <button
-                        onClick={() => {
-                          setSelectedTransformation(null);
-                          setTypeCastColumn('');
-                          setTypeCastNewType('');
-                        }}
+                        onClick={() => { setSelectedTransformation(null); setTypeCastColumn(''); setTypeCastNewType(''); }}
                         disabled={isTypeCasting}
                         className="w-full px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium disabled:opacity-50"
                       >
@@ -2473,39 +2500,29 @@ export default function TallySetting() {
                 {/* GET HISTORY PANEL */}
                 {selectedTransformation === 'get_history' && (
                   <div className="h-full flex flex-col">
-                    {/* Header */}
                     <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <History className="h-6 w-6 text-gray-600" />
                           <h3 className="text-lg font-bold text-gray-900">Transformation History</h3>
                         </div>
-                        <button
-                          onClick={fetchHistory}
-                          disabled={isLoadingHistory}
-                          className="p-2 rounded-lg hover:bg-gray-200 transition-colors"
-                          title="Refresh history"
-                        >
+                        <button onClick={fetchHistory} disabled={isLoadingHistory} className="p-2 rounded-lg hover:bg-gray-200 transition-colors" title="Refresh history">
                           <RefreshCw className={`h-5 w-5 text-gray-600 ${isLoadingHistory ? 'animate-spin' : ''}`} />
                         </button>
                       </div>
                       <p className="text-sm text-gray-600 mt-1">View all changes made to this dataset</p>
                     </div>
 
-                    {/* Dataset Info */}
                     <div className="p-4 bg-gray-50 border-b border-gray-200">
                       <div className="flex items-center gap-2">
                         {getFileIcon(selectedDataset.type)}
                         <div>
                           <p className="text-sm font-semibold text-gray-900">{selectedDataset.name}</p>
-                          <p className="text-xs text-gray-600">
-                            {historyData.length} transformation{historyData.length !== 1 ? 's' : ''} recorded
-                          </p>
+                          <p className="text-xs text-gray-600">{historyData.length} transformation{historyData.length !== 1 ? 's' : ''} recorded</p>
                         </div>
                       </div>
                     </div>
 
-                    {/* History Content */}
                     <div className="flex-1 overflow-y-auto p-4">
                       {isLoadingHistory ? (
                         <div className="flex flex-col items-center justify-center h-full">
@@ -2521,35 +2538,21 @@ export default function TallySetting() {
                       ) : (
                         <div className="space-y-3">
                           {historyData.map((item, index) => (
-                            <div
-                              key={item.track_id}
-                              className="bg-white rounded-lg border-2 border-gray-200 p-4 hover:border-blue-300 transition-colors"
-                            >
-                              {/* Version Number */}
+                            <div key={item.track_id} className="bg-white rounded-lg border-2 border-gray-200 p-4 hover:border-blue-300 transition-colors">
                               <div className="flex items-center justify-between mb-2">
                                 <div className="flex items-center gap-2">
                                   <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                                    <span className="text-sm font-bold text-blue-600">
-                                      #{historyData.length - index}
-                                    </span>
+                                    <span className="text-sm font-bold text-blue-600">#{historyData.length - index}</span>
                                   </div>
                                   <span className="text-xs font-semibold text-gray-500">VERSION</span>
                                 </div>
                               </div>
-
-                              {/* Transformation Note */}
                               <div className="mb-3">
-                                <p className="text-sm font-medium text-gray-900 mb-1">
-                                  {item.note}
-                                </p>
+                                <p className="text-sm font-medium text-gray-900 mb-1">{item.note}</p>
                               </div>
-
-                              {/* Track ID */}
                               <div className="bg-gray-50 rounded p-2 border border-gray-200">
                                 <p className="text-xs text-gray-500 mb-1">Track ID</p>
-                                <code className="text-xs font-mono text-gray-700 break-all">
-                                  {item.track_id}
-                                </code>
+                                <code className="text-xs font-mono text-gray-700 break-all">{item.track_id}</code>
                               </div>
                             </div>
                           ))}
@@ -2557,55 +2560,27 @@ export default function TallySetting() {
                       )}
                     </div>
 
-                    {/* Footer */}
                     <div className="p-4 border-t border-gray-200 bg-gray-50 space-y-3">
                       {historyData.length > 0 && (
                         <>
-                          <button
-                            onClick={handleUndo}
-                            disabled={isUndoing}
-                            className="w-full px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                          >
-                            {isUndoing ? (
-                              <>
-                                <Loader2 className="h-5 w-5 animate-spin" />
-                                <span>Undoing...</span>
-                              </>
-                            ) : (
-                              <>
-                                <RotateCcw className="h-5 w-5" />
-                                <span>Undo Latest</span>
-                              </>
-                            )}
+                          <button onClick={handleUndo} disabled={isUndoing} className="w-full px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                            {isUndoing ? (<><Loader2 className="h-5 w-5 animate-spin" /><span>Undoing...</span></>) : (<><RotateCcw className="h-5 w-5" /><span>Undo Latest</span></>)}
                           </button>
-                          <button
-                            onClick={() => setShowResetModal(true)}
-                            className="w-full px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium flex items-center justify-center gap-2"
-                          >
-                            <RefreshCw className="h-5 w-5" />
-                            <span>Reset to Original</span>
+                          <button onClick={() => setShowResetModal(true)} className="w-full px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium flex items-center justify-center gap-2">
+                            <RefreshCw className="h-5 w-5" /><span>Reset to Original</span>
                           </button>
                         </>
                       )}
-                      <button
-                        onClick={() => {
-                          setSelectedTransformation(null);
-                          setHistoryData([]);
-                        }}
-                        className="w-full px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium"
-                      >
+                      <button onClick={() => { setSelectedTransformation(null); setHistoryData([]); }} className="w-full px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium">
                         Close
                       </button>
                     </div>
                   </div>
                 )}
 
-
-
                 {/* GROUP AND AGGREGATE FORM */}
                 {selectedTransformation === 'group_and_aggregate' && (
                   <div className="h-full flex flex-col">
-                    {/* Form Header */}
                     <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-orange-50 to-white">
                       <div className="flex items-center gap-2">
                         <Database className="h-6 w-6 text-orange-600" />
@@ -2614,43 +2589,30 @@ export default function TallySetting() {
                       <p className="text-sm text-gray-600 mt-1">Group data and perform aggregations</p>
                     </div>
 
-                    {/* Form Content */}
                     <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                      {/* File Name Display */}
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Dataset Name
-                        </label>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Dataset Name</label>
                         <div className="px-4 py-3 bg-gray-100 rounded-lg border border-gray-300">
                           <div className="flex items-center gap-2">
                             {getFileIcon(selectedDataset.type)}
-                            <span className="text-sm font-semibold text-gray-900">
-                              {selectedDataset.name}
-                            </span>
+                            <span className="text-sm font-semibold text-gray-900">{selectedDataset.name}</span>
                           </div>
                         </div>
                       </div>
 
-                      {/* Group By Columns - Multi-select */}
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                           Group By Columns <span className="text-red-500">*</span>
                         </label>
                         <div className="space-y-2">
                           {getColumnHeaders(selectedDataset).map((header, index) => (
-                            <label
-                              key={index}
-                              className="flex items-center gap-3 p-3 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
-                            >
+                            <label key={index} className="flex items-center gap-3 p-3 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
                               <input
                                 type="checkbox"
                                 checked={groupByColumns.includes(header)}
                                 onChange={(e) => {
-                                  if (e.target.checked) {
-                                    setGroupByColumns([...groupByColumns, header]);
-                                  } else {
-                                    setGroupByColumns(groupByColumns.filter(col => col !== header));
-                                  }
+                                  if (e.target.checked) setGroupByColumns([...groupByColumns, header]);
+                                  else setGroupByColumns(groupByColumns.filter(col => col !== header));
                                 }}
                                 className="h-4 w-4 text-orange-600 rounded focus:ring-orange-500"
                               />
@@ -2660,57 +2622,35 @@ export default function TallySetting() {
                         </div>
                         {groupByColumns.length > 0 && (
                           <div className="mt-2 p-2 bg-orange-50 rounded border border-orange-200">
-                            <p className="text-xs text-orange-800">
-                              Selected: <span className="font-semibold">{groupByColumns.join(', ')}</span>
-                            </p>
+                            <p className="text-xs text-orange-800">Selected: <span className="font-semibold">{groupByColumns.join(', ')}</span></p>
                           </div>
                         )}
                       </div>
 
-                      {/* Aggregate Column Dropdown */}
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                           Aggregate Column <span className="text-red-500">*</span>
                         </label>
-                        <select
-                          value={aggregateColumn}
-                          onChange={(e) => setAggregateColumn(e.target.value)}
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white text-gray-900"
-                        >
+                        <select value={aggregateColumn} onChange={(e) => setAggregateColumn(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white text-gray-900">
                           <option value="">-- Select column to aggregate --</option>
-                          {getColumnHeaders(selectedDataset).map((header, index) => (
-                            <option key={index} value={header}>
-                              {header}
-                            </option>
-                          ))}
+                          {getColumnHeaders(selectedDataset).map((header, index) => (<option key={index} value={header}>{header}</option>))}
                         </select>
                       </div>
 
-                      {/* Aggregate Function Dropdown */}
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                           Aggregation Function <span className="text-red-500">*</span>
                         </label>
-                        <select
-                          value={aggregateFunction}
-                          onChange={(e) => setAggregateFunction(e.target.value)}
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white text-gray-900"
-                        >
+                        <select value={aggregateFunction} onChange={(e) => setAggregateFunction(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white text-gray-900">
                           <option value="">-- Select function --</option>
                           <option value="sum">Sum - Total of all values</option>
                           <option value="count">Count - Number of rows</option>
-                          <option value="mean">Mean - Average value</option>
-                          <option value="median">Median - Middle value</option>
                           <option value="min">Min - Smallest value</option>
                           <option value="max">Max - Largest value</option>
-                          <option value="std">Std - Standard deviation</option>
-                          <option value="var">Var - Variance</option>
-                          <option value="first">First - First value</option>
-                          <option value="last">Last - Last value</option>
+                          <option value="avg">Avg - Average Value</option>
                         </select>
                       </div>
 
-                      {/* Info Box */}
                       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                         <div className="flex items-start gap-2">
                           <AlertTriangle className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
@@ -2725,60 +2665,22 @@ export default function TallySetting() {
                           </div>
                         </div>
                       </div>
-
-                      {/* Example Box */}
-                      <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                        <p className="text-sm font-medium text-green-900 mb-2">Example:</p>
-                        <div className="text-xs text-green-800 space-y-1">
-                          <p><strong>Group by:</strong> Category, Region</p>
-                          <p><strong>Aggregate:</strong> Sales (with Sum)</p>
-                          <p><strong>Result:</strong> Total sales for each category in each region</p>
-                        </div>
-                      </div>
                     </div>
 
-                    {/* Form Footer */}
                     <div className="p-6 border-t border-gray-200 bg-gray-50 space-y-3">
-                      <button
-                        onClick={handleGroupAndAggregate}
-                        disabled={groupByColumns.length === 0 || !aggregateColumn || !aggregateFunction || isGroupingAggregating}
-                        className="w-full px-6 py-3 bg-orange-600 text-white rounded-lg flex items-center justify-center gap-2 hover:bg-orange-700 transition-colors font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {isGroupingAggregating ? (
-                          <>
-                            <Loader2 className="h-5 w-5 animate-spin" />
-                            <span>Loading Preview...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Eye className="h-5 w-5" />
-                            <span>Preview Grouping</span>
-                          </>
-                        )}
+                      <button onClick={handleGroupAndAggregate} disabled={groupByColumns.length === 0 || !aggregateColumn || !aggregateFunction || isGroupingAggregating} className="w-full px-6 py-3 bg-orange-600 text-white rounded-lg flex items-center justify-center gap-2 hover:bg-orange-700 transition-colors font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                        {isGroupingAggregating ? (<><Loader2 className="h-5 w-5 animate-spin" /><span>Loading Preview...</span></>) : (<><Eye className="h-5 w-5" /><span>Preview Grouping</span></>)}
                       </button>
-                      <button
-                        onClick={() => {
-                          setSelectedTransformation(null);
-                          setGroupByColumns([]);
-                          setAggregateColumn('');
-                          setAggregateFunction('');
-                        }}
-                        disabled={isGroupingAggregating}
-                        className="w-full px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium disabled:opacity-50"
-                      >
+                      <button onClick={() => { setSelectedTransformation(null); setGroupByColumns([]); setAggregateColumn(''); setAggregateFunction(''); }} disabled={isGroupingAggregating} className="w-full px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium disabled:opacity-50">
                         Cancel
                       </button>
                     </div>
                   </div>
                 )}
 
-
-
-
-                {/* FILTER BY DATE FORM - EXCEL-LIKE HIERARCHICAL FILTERING */}
+                {/* FILTER BY DATE FORM */}
                 {selectedTransformation === 'filter_by_date' && (
                   <div className="h-full flex flex-col">
-                    {/* Form Header */}
                     <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-pink-50 to-white">
                       <div className="flex items-center gap-2">
                         <Calendar className="h-6 w-6 text-pink-600" />
@@ -2787,101 +2689,57 @@ export default function TallySetting() {
                       <p className="text-sm text-gray-600 mt-1">Filter records by date ranges (Excel-style)</p>
                     </div>
 
-                    {/* Form Content */}
                     <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                      {/* File Name Display */}
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Dataset Name
-                        </label>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Dataset Name</label>
                         <div className="px-4 py-3 bg-gray-100 rounded-lg border border-gray-300">
                           <div className="flex items-center gap-2">
                             {getFileIcon(selectedDataset.type)}
-                            <span className="text-sm font-semibold text-gray-900">
-                              {selectedDataset.name}
-                            </span>
+                            <span className="text-sm font-semibold text-gray-900">{selectedDataset.name}</span>
                           </div>
                         </div>
                       </div>
 
-                      {/* Date Column Selection */}
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                           Select Date Column <span className="text-red-500">*</span>
                         </label>
                         <select
                           value={dateColumn}
-                          onChange={(e) => {
-                            setDateColumn(e.target.value);
-                            setDateSummaryLoaded(false);
-                            setSelectedYears([]);
-                            setSelectedMonths([]);
-                            setSelectedDays([]);
-                          }}
+                          onChange={(e) => { setDateColumn(e.target.value); setDateSummaryLoaded(false); setSelectedYears([]); setSelectedMonths([]); setSelectedDays([]); }}
                           className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent bg-white text-gray-900"
                         >
                           <option value="">-- Select date column --</option>
                           {getDateColumns(selectedDataset).length > 0 ? (
-                            getDateColumns(selectedDataset).map((header, index) => (
-                              <option key={index} value={header}>
-                                {header}
-                              </option>
-                            ))
+                            getDateColumns(selectedDataset).map((header, index) => (<option key={index} value={header}>{header}</option>))
                           ) : (
-                            getColumnHeaders(selectedDataset).map((header, index) => (
-                              <option key={index} value={header}>
-                                {header}
-                              </option>
-                            ))
+                            getColumnHeaders(selectedDataset).map((header, index) => (<option key={index} value={header}>{header}</option>))
                           )}
                         </select>
                         {dateColumn && !dateSummaryLoaded && (
-                          <button
-                            onClick={fetchDateSummary}
-                            disabled={isLoadingDateSummary}
-                            className="mt-3 w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-                          >
-                            {isLoadingDateSummary ? (
-                              <>
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                                <span>Loading dates...</span>
-                              </>
-                            ) : (
-                              <>
-                                <Calendar className="h-4 w-4" />
-                                <span>Load Available Dates</span>
-                              </>
-                            )}
+                          <button onClick={fetchDateSummary} disabled={isLoadingDateSummary} className="mt-3 w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
+                            {isLoadingDateSummary ? (<><Loader2 className="h-4 w-4 animate-spin" /><span>Loading dates...</span></>) : (<><Calendar className="h-4 w-4" /><span>Load Available Dates</span></>)}
                           </button>
                         )}
                       </div>
 
-                      {/* Date Filters - Show only after summary is loaded */}
                       {dateSummaryLoaded && (
                         <>
-                          {/* Year Filter */}
                           {availableYears.length > 0 && (
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Filter by Year(s) (Optional)
-                              </label>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">Filter by Year(s) (Optional)</label>
                               <div className="max-h-48 overflow-y-auto border border-gray-300 rounded-lg p-3 space-y-2 bg-white">
                                 {availableYears.map((year) => {
                                   const monthsInYear = Object.keys(availableMonths[year] || {}).length;
                                   return (
-                                    <label
-                                      key={year}
-                                      className="flex items-center gap-3 p-2 hover:bg-pink-50 rounded cursor-pointer transition-colors"
-                                    >
+                                    <label key={year} className="flex items-center gap-3 p-2 hover:bg-pink-50 rounded cursor-pointer transition-colors">
                                       <input
                                         type="checkbox"
                                         checked={selectedYears.includes(year)}
                                         onChange={(e) => {
-                                          if (e.target.checked) {
-                                            setSelectedYears([...selectedYears, year]);
-                                          } else {
+                                          if (e.target.checked) setSelectedYears([...selectedYears, year]);
+                                          else {
                                             setSelectedYears(selectedYears.filter(y => y !== year));
-                                            // Clear months and days that belong to this year
                                             const monthsToRemove = Object.keys(availableMonths[year] || {}).map(Number);
                                             setSelectedMonths(selectedMonths.filter(m => !monthsToRemove.includes(m)));
                                             setSelectedDays([]);
@@ -2890,33 +2748,21 @@ export default function TallySetting() {
                                         className="h-4 w-4 text-pink-600 rounded focus:ring-pink-500"
                                       />
                                       <span className="text-sm font-medium text-gray-900">{year}</span>
-                                      <span className="text-xs text-gray-500 ml-auto">
-                                        {monthsInYear} month{monthsInYear !== 1 ? 's' : ''}
-                                      </span>
+                                      <span className="text-xs text-gray-500 ml-auto">{monthsInYear} month{monthsInYear !== 1 ? 's' : ''}</span>
                                     </label>
                                   );
                                 })}
                               </div>
                               {selectedYears.length > 0 && (
                                 <div className="mt-2 p-2 bg-pink-50 rounded border border-pink-200">
-                                  <p className="text-xs text-pink-800">
-                                    Selected: <span className="font-semibold">{selectedYears.join(', ')}</span>
-                                  </p>
+                                  <p className="text-xs text-pink-800">Selected: <span className="font-semibold">{selectedYears.join(', ')}</span></p>
                                 </div>
                               )}
                             </div>
                           )}
 
-                          {/* Month Filter - Dynamically filtered based on selected years */}
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              Filter by Month(s) (Optional)
-                              {selectedYears.length > 0 && (
-                                <span className="text-xs text-gray-500 ml-2">
-                                  (Showing months from selected year{selectedYears.length > 1 ? 's' : ''})
-                                </span>
-                              )}
-                            </label>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Filter by Month(s) (Optional)</label>
                             <div className="grid grid-cols-3 gap-2">
                               {[
                                 { num: 1, name: 'Jan' }, { num: 2, name: 'Feb' }, { num: 3, name: 'Mar' },
@@ -2924,43 +2770,23 @@ export default function TallySetting() {
                                 { num: 7, name: 'Jul' }, { num: 8, name: 'Aug' }, { num: 9, name: 'Sep' },
                                 { num: 10, name: 'Oct' }, { num: 11, name: 'Nov' }, { num: 12, name: 'Dec' }
                               ].map((month) => {
-                                // Check if this month exists in any of the selected years
                                 let isAvailable = false;
                                 if (selectedYears.length === 0) {
-                                  // If no year selected, check if month exists in any year
-                                  isAvailable = Object.values(availableMonths).some(yearMonths =>
-                                    yearMonths.hasOwnProperty(month.num.toString())
-                                  );
+                                  isAvailable = Object.values(availableMonths).some(yearMonths => yearMonths.hasOwnProperty(month.num.toString()));
                                 } else {
-                                  // Check if month exists in selected years
-                                  isAvailable = selectedYears.some(year =>
-                                    availableMonths[year]?.hasOwnProperty(month.num.toString())
-                                  );
+                                  isAvailable = selectedYears.some(year => availableMonths[year]?.hasOwnProperty(month.num.toString()));
                                 }
-
                                 const isSelected = selectedMonths.includes(month.num);
-
                                 return (
                                   <button
                                     key={month.num}
                                     onClick={() => {
                                       if (!isAvailable) return;
-
-                                      if (isSelected) {
-                                        setSelectedMonths(selectedMonths.filter(m => m !== month.num));
-                                        setSelectedDays([]); // Clear days when deselecting month
-                                      } else {
-                                        setSelectedMonths([...selectedMonths, month.num]);
-                                      }
+                                      if (isSelected) { setSelectedMonths(selectedMonths.filter(m => m !== month.num)); setSelectedDays([]); }
+                                      else setSelectedMonths([...selectedMonths, month.num]);
                                     }}
                                     disabled={!isAvailable}
-                                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${isSelected
-                                      ? 'bg-pink-600 text-white shadow-md'
-                                      : isAvailable
-                                        ? 'bg-white text-gray-700 border border-gray-300 hover:bg-pink-50'
-                                        : 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
-                                      }`}
-                                    title={!isAvailable ? 'Not available in selected year(s)' : ''}
+                                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${isSelected ? 'bg-pink-600 text-white shadow-md' : isAvailable ? 'bg-white text-gray-700 border border-gray-300 hover:bg-pink-50' : 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'}`}
                                   >
                                     {month.name}
                                   </button>
@@ -2969,83 +2795,33 @@ export default function TallySetting() {
                             </div>
                             {selectedMonths.length > 0 && (
                               <div className="mt-2 p-2 bg-pink-50 rounded border border-pink-200">
-                                <p className="text-xs text-pink-800">
-                                  Selected: <span className="font-semibold">
-                                    {selectedMonths.sort((a, b) => a - b).map(m =>
-                                      ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m - 1]
-                                    ).join(', ')}
-                                  </span>
-                                </p>
+                                <p className="text-xs text-pink-800">Selected: <span className="font-semibold">{selectedMonths.sort((a, b) => a - b).map(m => ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m-1]).join(', ')}</span></p>
                               </div>
                             )}
                           </div>
 
-                          {/* Day Filter - Dynamically filtered based on selected years and months */}
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              Filter by Day(s) (Optional)
-                              {(selectedYears.length > 0 || selectedMonths.length > 0) && (
-                                <span className="text-xs text-gray-500 ml-2">
-                                  (Showing days from selected year{selectedYears.length > 1 ? 's' : ''}/month{selectedMonths.length > 1 ? 's' : ''})
-                                </span>
-                              )}
-                            </label>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Filter by Day(s) (Optional)</label>
                             <div className="max-h-48 overflow-y-auto border border-gray-300 rounded-lg p-3 bg-white">
                               <div className="grid grid-cols-7 gap-1">
                                 {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => {
-                                  // Determine if this day is available based on selected years and months
                                   let isAvailable = false;
-
                                   if (selectedYears.length === 0 && selectedMonths.length === 0) {
-                                    // No filters - check if day exists in any year/month
-                                    isAvailable = Object.values(availableMonths).some(yearMonths =>
-                                      Object.values(yearMonths).some(days => Array.isArray(days) && days.includes(day))
-                                    );
+                                    isAvailable = Object.values(availableMonths).some(yearMonths => Object.values(yearMonths).some(days => Array.isArray(days) && days.includes(day)));
                                   } else if (selectedYears.length > 0 && selectedMonths.length === 0) {
-                                    // Only years selected - check if day exists in any month of selected years
-                                    isAvailable = selectedYears.some(year =>
-                                      Object.values(availableMonths[year] || {}).some(days => Array.isArray(days) && days.includes(day))
-                                    );
+                                    isAvailable = selectedYears.some(year => Object.values(availableMonths[year] || {}).some(days => Array.isArray(days) && days.includes(day)));
                                   } else if (selectedYears.length === 0 && selectedMonths.length > 0) {
-                                    // Only months selected - check if day exists in selected months across all years
-                                    isAvailable = Object.values(availableMonths).some(yearMonths =>
-                                      selectedMonths.some(month => {
-                                        const days = yearMonths[month.toString()];
-                                        return Array.isArray(days) && days.includes(day);
-                                      })
-                                    );
+                                    isAvailable = Object.values(availableMonths).some(yearMonths => selectedMonths.some(month => { const days = yearMonths[month.toString()]; return Array.isArray(days) && days.includes(day); }));
                                   } else {
-                                    // Both years and months selected - check specific year/month combinations
-                                    isAvailable = selectedYears.some(year =>
-                                      selectedMonths.some(month => {
-                                        const days = availableMonths[year]?.[month.toString()];
-                                        return Array.isArray(days) && days.includes(day);
-                                      })
-                                    );
+                                    isAvailable = selectedYears.some(year => selectedMonths.some(month => { const days = availableMonths[year]?.[month.toString()]; return Array.isArray(days) && days.includes(day); }));
                                   }
-
                                   const isSelected = selectedDays.includes(day);
-
                                   return (
                                     <button
                                       key={day}
-                                      onClick={() => {
-                                        if (!isAvailable) return;
-
-                                        if (isSelected) {
-                                          setSelectedDays(selectedDays.filter(d => d !== day));
-                                        } else {
-                                          setSelectedDays([...selectedDays, day]);
-                                        }
-                                      }}
+                                      onClick={() => { if (!isAvailable) return; if (isSelected) setSelectedDays(selectedDays.filter(d => d !== day)); else setSelectedDays([...selectedDays, day]); }}
                                       disabled={!isAvailable}
-                                      className={`px-2 py-1 rounded text-xs font-medium transition-all ${isSelected
-                                        ? 'bg-pink-600 text-white shadow-sm'
-                                        : isAvailable
-                                          ? 'bg-white text-gray-700 border border-gray-200 hover:bg-pink-50'
-                                          : 'bg-gray-50 text-gray-300 border border-gray-100 cursor-not-allowed'
-                                        }`}
-                                      title={!isAvailable ? 'Not available in selected year(s)/month(s)' : ''}
+                                      className={`px-2 py-1 rounded text-xs font-medium transition-all ${isSelected ? 'bg-pink-600 text-white shadow-sm' : isAvailable ? 'bg-white text-gray-700 border border-gray-200 hover:bg-pink-50' : 'bg-gray-50 text-gray-300 border border-gray-100 cursor-not-allowed'}`}
                                     >
                                       {day}
                                     </button>
@@ -3055,84 +2831,28 @@ export default function TallySetting() {
                             </div>
                             {selectedDays.length > 0 && (
                               <div className="mt-2 p-2 bg-pink-50 rounded border border-pink-200">
-                                <p className="text-xs text-pink-800">
-                                  Selected: <span className="font-semibold">{selectedDays.sort((a, b) => a - b).join(', ')}</span>
-                                </p>
+                                <p className="text-xs text-pink-800">Selected: <span className="font-semibold">{selectedDays.sort((a, b) => a - b).join(', ')}</span></p>
                               </div>
                             )}
                           </div>
-
-                          {/* Info Box */}
-                          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                            <div className="flex items-start gap-2">
-                              <AlertTriangle className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                              <div className="text-sm text-blue-800">
-                                <p className="font-medium mb-1">Excel-Like Filtering:</p>
-                                <ul className="list-disc list-inside space-y-1 text-xs">
-                                  <li>Select year(s) to see only months available in those years</li>
-                                  <li>Select month(s) to see only days available in those months</li>
-                                  <li>Grayed out options are not available in your selection</li>
-                                  <li>Filters work with AND logic when combined</li>
-                                </ul>
-                              </div>
-                            </div>
-                          </div>
                         </>
                       )}
-
-                      {/* Example Box */}
-                      <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                        <p className="text-sm font-medium text-green-900 mb-2">Example Usage:</p>
-                        <div className="text-xs text-green-800 space-y-1">
-                          <p><strong>Scenario 1:</strong> Select Year=2024 → Only months available in 2024 will be enabled</p>
-                          <p><strong>Scenario 2:</strong> Select Year=2024, Month=Jan → Only days in January 2024 will be enabled</p>
-                          <p><strong>Scenario 3:</strong> Select Month=Jan (no year) → All days available in January across all years</p>
-                        </div>
-                      </div>
                     </div>
 
-                    {/* Form Footer */}
                     <div className="p-6 border-t border-gray-200 bg-gray-50 space-y-3">
-                      <button
-                        onClick={handleFilterByDate}
-                        disabled={!dateColumn || !dateSummaryLoaded || isFilteringByDate || (selectedYears.length === 0 && selectedMonths.length === 0 && selectedDays.length === 0)}
-                        className="w-full px-6 py-3 bg-pink-600 text-white rounded-lg flex items-center justify-center gap-2 hover:bg-pink-700 transition-colors font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {isFilteringByDate ? (
-                          <>
-                            <Loader2 className="h-5 w-5 animate-spin" />
-                            <span>Applying Filter...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Filter className="h-5 w-5" />
-                            <span>Apply Date Filter</span>
-                          </>
-                        )}
+                      <button onClick={handleFilterByDate} disabled={!dateColumn || !dateSummaryLoaded || isFilteringByDate || (selectedYears.length === 0 && selectedMonths.length === 0 && selectedDays.length === 0)} className="w-full px-6 py-3 bg-pink-600 text-white rounded-lg flex items-center justify-center gap-2 hover:bg-pink-700 transition-colors font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                        {isFilteringByDate ? (<><Loader2 className="h-5 w-5 animate-spin" /><span>Applying Filter...</span></>) : (<><Filter className="h-5 w-5" /><span>Apply Date Filter</span></>)}
                       </button>
-                      <button
-                        onClick={() => {
-                          setSelectedTransformation(null);
-                          setDateColumn('');
-                          setSelectedYears([]);
-                          setSelectedMonths([]);
-                          setSelectedDays([]);
-                          setDateSummaryLoaded(false);
-                        }}
-                        disabled={isFilteringByDate}
-                        className="w-full px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium disabled:opacity-50"
-                      >
+                      <button onClick={() => { setSelectedTransformation(null); setDateColumn(''); setSelectedYears([]); setSelectedMonths([]); setSelectedDays([]); setDateSummaryLoaded(false); }} disabled={isFilteringByDate} className="w-full px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium disabled:opacity-50">
                         Cancel
                       </button>
                     </div>
                   </div>
                 )}
 
-
                 {/* FILTER BY UNIQUE VALUES FORM */}
                 {selectedTransformation === 'filter_by_values' && (
                   <div className="h-full flex flex-col">
-                    {/* Form Header */}
                     <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-indigo-50 to-white">
                       <div className="flex items-center gap-2">
                         <Filter className="h-6 w-6 text-indigo-600" />
@@ -3141,71 +2861,38 @@ export default function TallySetting() {
                       <p className="text-sm text-gray-600 mt-1">Filter records by specific column values</p>
                     </div>
 
-                    {/* Form Content */}
                     <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                      {/* File Name Display */}
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Dataset Name
-                        </label>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Dataset Name</label>
                         <div className="px-4 py-3 bg-gray-100 rounded-lg border border-gray-300">
                           <div className="flex items-center gap-2">
                             {getFileIcon(selectedDataset.type)}
-                            <span className="text-sm font-semibold text-gray-900">
-                              {selectedDataset.name}
-                            </span>
+                            <span className="text-sm font-semibold text-gray-900">{selectedDataset.name}</span>
                           </div>
                         </div>
                       </div>
 
-                      {/* Column Selection */}
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                           Select Column to Filter <span className="text-red-500">*</span>
                         </label>
                         <select
                           value={filterColumn}
-                          onChange={(e) => {
-                            setFilterColumn(e.target.value);
-                            setUniqueValuesLoaded(false);
-                            setUniqueValuesData(null);
-                            setSelectedFilterValues(new Set());
-                            setUniqueValuesSearchTerm('');
-                          }}
+                          onChange={(e) => { setFilterColumn(e.target.value); setUniqueValuesLoaded(false); setUniqueValuesData(null); setSelectedFilterValues(new Set()); setUniqueValuesSearchTerm(''); }}
                           className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white text-gray-900"
                         >
                           <option value="">-- Select a column --</option>
-                          {getColumnHeaders(selectedDataset).map((header, index) => (
-                            <option key={index} value={header}>
-                              {header}
-                            </option>
-                          ))}
+                          {getColumnHeaders(selectedDataset).map((header, index) => (<option key={index} value={header}>{header}</option>))}
                         </select>
                         {filterColumn && !uniqueValuesLoaded && (
-                          <button
-                            onClick={fetchUniqueValues}
-                            disabled={isLoadingUniqueValues}
-                            className="mt-3 w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-                          >
-                            {isLoadingUniqueValues ? (
-                              <>
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                                <span>Loading values...</span>
-                              </>
-                            ) : (
-                              <>
-                                <Filter className="h-4 w-4" />
-                                <span>Load Unique Values</span>
-                              </>
-                            )}
+                          <button onClick={fetchUniqueValues} disabled={isLoadingUniqueValues} className="mt-3 w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
+                            {isLoadingUniqueValues ? (<><Loader2 className="h-4 w-4 animate-spin" /><span>Loading values...</span></>) : (<><Filter className="h-4 w-4" /><span>Load Unique Values</span></>)}
                           </button>
                         )}
                       </div>
 
-                      {/* Unique Values Display - Show only after values are loaded */}
                       {uniqueValuesLoaded && uniqueValuesData && (
                         <>
-                          {/* Statistics */}
                           <div className="grid grid-cols-3 gap-3">
                             <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
                               <p className="text-xs text-blue-600 font-medium">Total Rows</p>
@@ -3221,46 +2908,22 @@ export default function TallySetting() {
                             </div>
                           </div>
 
-                          {/* Search Box */}
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              Search Values
-                            </label>
-                            <input
-                              type="text"
-                              value={uniqueValuesSearchTerm}
-                              onChange={(e) => setUniqueValuesSearchTerm(e.target.value)}
-                              placeholder="Type to search..."
-                              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                            />
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Search Values</label>
+                            <input type="text" value={uniqueValuesSearchTerm} onChange={(e) => setUniqueValuesSearchTerm(e.target.value)} placeholder="Type to search..." className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
                           </div>
 
-                          {/* Selection Controls */}
                           <div className="flex items-center justify-between gap-2">
-                            <button
-                              onClick={selectAllFilterValues}
-                              className="flex-1 px-3 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-colors text-sm font-medium"
-                            >
-                              Select All {uniqueValuesSearchTerm && '(Filtered)'}
-                            </button>
-                            <button
-                              onClick={deselectAllFilterValues}
-                              className="flex-1 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
-                            >
-                              Clear Selection
-                            </button>
+                            <button onClick={selectAllFilterValues} className="flex-1 px-3 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-colors text-sm font-medium">Select All {uniqueValuesSearchTerm && '(Filtered)'}</button>
+                            <button onClick={deselectAllFilterValues} className="flex-1 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium">Clear Selection</button>
                           </div>
 
-                          {/* Selected Count */}
                           {selectedFilterValues.size > 0 && (
                             <div className="p-3 bg-indigo-50 rounded-lg border border-indigo-200">
-                              <p className="text-sm text-indigo-800">
-                                <span className="font-bold">{selectedFilterValues.size}</span> value(s) selected
-                              </p>
+                              <p className="text-sm text-indigo-800"><span className="font-bold">{selectedFilterValues.size}</span> value(s) selected</p>
                             </div>
                           )}
 
-                          {/* Values List */}
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">
                               Select Values to Keep <span className="text-red-500">*</span>
@@ -3276,32 +2939,14 @@ export default function TallySetting() {
                                   {getFilteredUniqueValues().map((value: any, index: number) => {
                                     const count = uniqueValuesData.value_counts[String(value)] || 0;
                                     const isSelected = selectedFilterValues.has(value);
-
                                     return (
-                                      <label
-                                        key={index}
-                                        className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all ${isSelected
-                                          ? 'bg-indigo-100 border-2 border-indigo-500'
-                                          : 'hover:bg-gray-50 border-2 border-transparent'
-                                          }`}
-                                      >
-                                        <input
-                                          type="checkbox"
-                                          checked={isSelected}
-                                          onChange={() => toggleFilterValue(value)}
-                                          className="h-4 w-4 text-indigo-600 rounded focus:ring-indigo-500"
-                                        />
+                                      <label key={index} className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all ${isSelected ? 'bg-indigo-100 border-2 border-indigo-500' : 'hover:bg-gray-50 border-2 border-transparent'}`}>
+                                        <input type="checkbox" checked={isSelected} onChange={() => toggleFilterValue(value)} className="h-4 w-4 text-indigo-600 rounded focus:ring-indigo-500" />
                                         <div className="flex-1 min-w-0">
-                                          <p className="text-sm font-medium text-gray-900 truncate" title={String(value)}>
-                                            {String(value)}
-                                          </p>
-                                          <p className="text-xs text-gray-500">
-                                            {count} occurrence{count !== 1 ? 's' : ''} ({((count / uniqueValuesData.total_rows) * 100).toFixed(1)}%)
-                                          </p>
+                                          <p className="text-sm font-medium text-gray-900 truncate" title={String(value)}>{String(value)}</p>
+                                          <p className="text-xs text-gray-500">{count} occurrence{count !== 1 ? 's' : ''} ({((count / uniqueValuesData.total_rows) * 100).toFixed(1)}%)</p>
                                         </div>
-                                        {isSelected && (
-                                          <Check className="h-5 w-5 text-indigo-600 flex-shrink-0" />
-                                        )}
+                                        {isSelected && <Check className="h-5 w-5 text-indigo-600 flex-shrink-0" />}
                                       </label>
                                     );
                                   })}
@@ -3309,108 +2954,34 @@ export default function TallySetting() {
                               )}
                             </div>
                           </div>
-
-                          {/* Info Box */}
-                          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                            <div className="flex items-start gap-2">
-                              <AlertTriangle className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-                              <div className="text-sm text-yellow-800">
-                                <p className="font-medium mb-1">Important:</p>
-                                <ul className="list-disc list-inside space-y-1 text-xs">
-                                  <li>Only rows with selected values will be kept</li>
-                                  <li>Unselected values will be filtered out</li>
-                                  <li>This modifies the dataset - use undo if needed</li>
-                                  <li>Null values are counted separately</li>
-                                </ul>
-                              </div>
-                            </div>
-                          </div>
                         </>
-                      )}
-
-                      {/* Example Box */}
-                      {!uniqueValuesLoaded && (
-                        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                          <p className="text-sm font-medium text-green-900 mb-2">How it works:</p>
-                          <div className="text-xs text-green-800 space-y-1">
-                            <p><strong>Step 1:</strong> Select a column to filter (e.g., Status, Category)</p>
-                            <p><strong>Step 2:</strong> Click "Load Unique Values" to see all unique values</p>
-                            <p><strong>Step 3:</strong> Select which values you want to keep</p>
-                            <p><strong>Step 4:</strong> Apply filter - only selected values will remain</p>
-                          </div>
-                        </div>
                       )}
                     </div>
 
-                    {/* Form Footer */}
                     <div className="p-6 border-t border-gray-200 bg-gray-50 space-y-3">
-                      <button
-                        onClick={handleFilterByUniqueValues}
-                        disabled={!filterColumn || !uniqueValuesLoaded || selectedFilterValues.size === 0 || isApplyingFilter}
-                        className="w-full px-6 py-3 bg-indigo-600 text-white rounded-lg flex items-center justify-center gap-2 hover:bg-indigo-700 transition-colors font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {isApplyingFilter ? (
-                          <>
-                            <Loader2 className="h-5 w-5 animate-spin" />
-                            <span>Applying Filter...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Save className="h-5 w-5" />
-                            <span>Apply Filter ({selectedFilterValues.size} values)</span>
-                          </>
-                        )}
+                      <button onClick={handleFilterByUniqueValues} disabled={!filterColumn || !uniqueValuesLoaded || selectedFilterValues.size === 0 || isApplyingFilter} className="w-full px-6 py-3 bg-indigo-600 text-white rounded-lg flex items-center justify-center gap-2 hover:bg-indigo-700 transition-colors font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                        {isApplyingFilter ? (<><Loader2 className="h-5 w-5 animate-spin" /><span>Applying Filter...</span></>) : (<><Save className="h-5 w-5" /><span>Apply Filter ({selectedFilterValues.size} values)</span></>)}
                       </button>
-                      <button
-                        onClick={() => {
-                          setSelectedTransformation(null);
-                          setFilterColumn('');
-                          setSelectedFilterValues(new Set());
-                          setUniqueValuesLoaded(false);
-                          setUniqueValuesData(null);
-                          setUniqueValuesSearchTerm('');
-                        }}
-                        disabled={isApplyingFilter}
-                        className="w-full px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium disabled:opacity-50"
-                      >
+                      <button onClick={() => { setSelectedTransformation(null); setFilterColumn(''); setSelectedFilterValues(new Set()); setUniqueValuesLoaded(false); setUniqueValuesData(null); setUniqueValuesSearchTerm(''); }} disabled={isApplyingFilter} className="w-full px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium disabled:opacity-50">
                         Cancel
                       </button>
                     </div>
                   </div>
                 )}
 
-
-
                 {/* Column Filter Dropdown */}
                 {filterDropdownOpen && (
-                  <div
-                    className="fixed bg-white rounded-lg shadow-2xl border-2 border-gray-300 z-[60] w-96 overflow-hidden flex flex-col"
-                    style={{
-                      top: `${filterDropdownPosition.top}px`,
-                      left: `${filterDropdownPosition.left}px`,
-                      maxHeight: `min(600px, ${window.innerHeight - filterDropdownPosition.top - 20}px)` // Dynamic max height
-                    }}
-                  >
-                    {/* Dropdown Header */}
+                  <div className="fixed bg-white rounded-lg shadow-2xl border-2 border-gray-300 z-[60] w-96 overflow-hidden flex flex-col" style={{ top: `${filterDropdownPosition.top}px`, left: `${filterDropdownPosition.left}px`, maxHeight: `min(600px, ${window.innerHeight - filterDropdownPosition.top - 20}px)` }}>
                     <div className="px-4 py-3 bg-gradient-to-r from-indigo-50 to-indigo-100 border-b border-indigo-200">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <Filter className="h-5 w-5 text-indigo-600" />
                           <h3 className="text-sm font-bold text-gray-900">Filter: {filterDropdownOpen}</h3>
                         </div>
-                        <button
-                          onClick={() => {
-                            setFilterDropdownOpen(null);
-                            setColumnFilterValues(null);
-                          }}
-                          className="text-gray-500 hover:text-gray-700 p-1 hover:bg-white/50 rounded transition-colors"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
+                        <button onClick={() => { setFilterDropdownOpen(null); setColumnFilterValues(null); }} className="text-gray-500 hover:text-gray-700 p-1 hover:bg-white/50 rounded transition-colors"><X className="h-4 w-4" /></button>
                       </div>
                     </div>
 
-                    {/* Loading State */}
                     {isLoadingColumnFilter ? (
                       <div className="flex flex-col items-center justify-center py-12">
                         <Loader2 className="h-10 w-10 animate-spin text-indigo-600 mb-3" />
@@ -3418,55 +2989,24 @@ export default function TallySetting() {
                       </div>
                     ) : columnFilterValues ? (
                       <>
-                        {/* Statistics */}
                         <div className="p-3 bg-gray-50 border-b border-gray-200">
                           <div className="grid grid-cols-3 gap-2 text-xs">
-                            <div className="text-center">
-                              <p className="text-gray-600">Total</p>
-                              <p className="font-bold text-gray-900">{columnFilterValues.total_rows}</p>
-                            </div>
-                            <div className="text-center">
-                              <p className="text-gray-600">Unique</p>
-                              <p className="font-bold text-indigo-600">{columnFilterValues.unique_values_count}</p>
-                            </div>
-                            <div className="text-center">
-                              <p className="text-gray-600">Nulls</p>
-                              <p className="font-bold text-red-600">{columnFilterValues.null_rows}</p>
-                            </div>
+                            <div className="text-center"><p className="text-gray-600">Total</p><p className="font-bold text-gray-900">{columnFilterValues.total_rows}</p></div>
+                            <div className="text-center"><p className="text-gray-600">Unique</p><p className="font-bold text-indigo-600">{columnFilterValues.unique_values_count}</p></div>
+                            <div className="text-center"><p className="text-gray-600">Nulls</p><p className="font-bold text-red-600">{columnFilterValues.null_rows}</p></div>
                           </div>
                         </div>
 
-                        {/* Search Box */}
                         <div className="p-3 border-b border-gray-200">
-                          <input
-                            type="text"
-                            value={columnFilterSearchTerm}
-                            onChange={(e) => setColumnFilterSearchTerm(e.target.value)}
-                            placeholder="Search values..."
-                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                          />
+                          <input type="text" value={columnFilterSearchTerm} onChange={(e) => setColumnFilterSearchTerm(e.target.value)} placeholder="Search values..." className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                         </div>
 
-                        {/* Selection Controls */}
                         <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 flex items-center justify-between gap-2">
-                          <button
-                            onClick={selectAllColumnFilterValues}
-                            className="flex-1 px-2 py-1 text-xs bg-indigo-100 text-indigo-700 rounded hover:bg-indigo-200 transition-colors font-medium"
-                          >
-                            Select All
-                          </button>
-                          <button
-                            onClick={deselectAllColumnFilterValues}
-                            className="flex-1 px-2 py-1 text-xs bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors font-medium"
-                          >
-                            Clear
-                          </button>
-                          <span className="text-xs text-gray-600">
-                            {selectedColumnFilterValues.size} selected
-                          </span>
+                          <button onClick={selectAllColumnFilterValues} className="flex-1 px-2 py-1 text-xs bg-indigo-100 text-indigo-700 rounded hover:bg-indigo-200 transition-colors font-medium">Select All</button>
+                          <button onClick={deselectAllColumnFilterValues} className="flex-1 px-2 py-1 text-xs bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors font-medium">Clear</button>
+                          <span className="text-xs text-gray-600">{selectedColumnFilterValues.size} selected</span>
                         </div>
 
-                        {/* Values List */}
                         <div className="flex-1 overflow-y-auto">
                           {getFilteredColumnValues().length === 0 ? (
                             <div className="flex flex-col items-center justify-center py-8">
@@ -3479,26 +3019,12 @@ export default function TallySetting() {
                                 const count = columnFilterValues.value_counts[String(value)] || 0;
                                 const isSelected = selectedColumnFilterValues.has(value);
                                 const percentage = ((count / columnFilterValues.total_rows) * 100).toFixed(1);
-
                                 return (
-                                  <label
-                                    key={index}
-                                    className={`flex items-center gap-2 p-2 rounded cursor-pointer transition-colors ${isSelected ? 'bg-indigo-50 border border-indigo-200' : 'hover:bg-gray-50'
-                                      }`}
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={isSelected}
-                                      onChange={() => toggleColumnFilterValue(value)}
-                                      className="h-4 w-4 text-indigo-600 rounded focus:ring-indigo-500"
-                                    />
+                                  <label key={index} className={`flex items-center gap-2 p-2 rounded cursor-pointer transition-colors ${isSelected ? 'bg-indigo-50 border border-indigo-200' : 'hover:bg-gray-50'}`}>
+                                    <input type="checkbox" checked={isSelected} onChange={() => toggleColumnFilterValue(value)} className="h-4 w-4 text-indigo-600 rounded focus:ring-indigo-500" />
                                     <div className="flex-1 min-w-0">
-                                      <p className="text-sm font-medium text-gray-900 truncate" title={String(value)}>
-                                        {String(value)}
-                                      </p>
-                                      <p className="text-xs text-gray-500">
-                                        {count.toLocaleString()} ({percentage}%)
-                                      </p>
+                                      <p className="text-sm font-medium text-gray-900 truncate" title={String(value)}>{String(value)}</p>
+                                      <p className="text-xs text-gray-500">{count.toLocaleString()} ({percentage}%)</p>
                                     </div>
                                     {isSelected && <Check className="h-4 w-4 text-indigo-600 flex-shrink-0" />}
                                   </label>
@@ -3508,33 +3034,10 @@ export default function TallySetting() {
                           )}
                         </div>
 
-                        {/* Footer Buttons */}
                         <div className="p-3 border-t border-gray-200 bg-gray-50 flex gap-2">
-                          <button
-                            onClick={() => {
-                              setFilterDropdownOpen(null);
-                              setColumnFilterValues(null);
-                            }}
-                            className="flex-1 px-4 py-2 text-sm bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium"
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            onClick={applyColumnFilter}
-                            disabled={isApplyingFilter || selectedColumnFilterValues.size === 0}
-                            className="flex-1 px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                          >
-                            {isApplyingFilter ? (
-                              <>
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                                <span>Applying...</span>
-                              </>
-                            ) : (
-                              <>
-                                <Check className="h-4 w-4" />
-                                <span>OK</span>
-                              </>
-                            )}
+                          <button onClick={() => { setFilterDropdownOpen(null); setColumnFilterValues(null); }} className="flex-1 px-4 py-2 text-sm bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium">Cancel</button>
+                          <button onClick={applyColumnFilter} disabled={isApplyingFilter || selectedColumnFilterValues.size === 0} className="flex-1 px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                            {isApplyingFilter ? (<><Loader2 className="h-4 w-4 animate-spin" /><span>Applying...</span></>) : (<><Check className="h-4 w-4" /><span>OK</span></>)}
                           </button>
                         </div>
                       </>
@@ -3542,13 +3045,9 @@ export default function TallySetting() {
                   </div>
                 )}
 
-
-
-
                 {/* TEXT FILTER FORM */}
                 {selectedTransformation === 'text_filter' && (
                   <div className="h-full flex flex-col">
-                    {/* Form Header */}
                     <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-white">
                       <div className="flex items-center gap-2">
                         <Type className="h-6 w-6 text-blue-600" />
@@ -3557,58 +3056,28 @@ export default function TallySetting() {
                       <p className="text-sm text-gray-600 mt-1">Filter text data with advanced conditions</p>
                     </div>
 
-                    {/* Form Content */}
                     <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                      {/* File Name Display */}
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Dataset Name
-                        </label>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Dataset Name</label>
                         <div className="px-4 py-3 bg-gray-100 rounded-lg border border-gray-300">
                           <div className="flex items-center gap-2">
                             {getFileIcon(selectedDataset.type)}
-                            <span className="text-sm font-semibold text-gray-900">
-                              {selectedDataset.name}
-                            </span>
+                            <span className="text-sm font-semibold text-gray-900">{selectedDataset.name}</span>
                           </div>
                         </div>
                       </div>
 
-                      {/* Column Selection */}
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Select Column <span className="text-red-500">*</span>
-                        </label>
-                        <select
-                          value={textFilterColumn}
-                          onChange={(e) => setTextFilterColumn(e.target.value)}
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
-                        >
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Select Column <span className="text-red-500">*</span></label>
+                        <select value={textFilterColumn} onChange={(e) => setTextFilterColumn(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900">
                           <option value="">-- Select a column --</option>
-                          {getColumnHeaders(selectedDataset).map((header, index) => (
-                            <option key={index} value={header}>
-                              {header}
-                            </option>
-                          ))}
+                          {getColumnHeaders(selectedDataset).map((header, index) => (<option key={index} value={header}>{header}</option>))}
                         </select>
                       </div>
 
-                      {/* Filter Type Selection */}
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Filter Type <span className="text-red-500">*</span>
-                        </label>
-                        <select
-                          value={textFilterType}
-                          onChange={(e) => {
-                            setTextFilterType(e.target.value);
-                            // Reset values when filter type changes
-                            setTextFilterValue('');
-                            setTextFilterValue2('');
-                            setTextFilterValues([]);
-                          }}
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
-                        >
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Filter Type <span className="text-red-500">*</span></label>
+                        <select value={textFilterType} onChange={(e) => { setTextFilterType(e.target.value); setTextFilterValue(''); setTextFilterValue2(''); setTextFilterValues([]); }} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900">
                           <option value="equals">Equals</option>
                           <option value="contains">Contains</option>
                           <option value="starts_with">Starts With</option>
@@ -3621,74 +3090,34 @@ export default function TallySetting() {
                         </select>
                       </div>
 
-                      {/* Single Value Input (for equals, contains, starts_with, ends_with, not_equals) */}
                       {['equals', 'contains', 'starts_with', 'ends_with', 'not_equals'].includes(textFilterType) && (
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Filter Value <span className="text-red-500">*</span>
-                          </label>
-                          <input
-                            type="text"
-                            value={textFilterValue}
-                            onChange={(e) => setTextFilterValue(e.target.value)}
-                            placeholder={`Enter value to ${textFilterType.replace('_', ' ')}`}
-                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          />
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Filter Value <span className="text-red-500">*</span></label>
+                          <input type="text" value={textFilterValue} onChange={(e) => setTextFilterValue(e.target.value)} placeholder={`Enter value to ${textFilterType.replace('_', ' ')}`} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
                         </div>
                       )}
 
-                      {/* Between Values (for between filter) */}
                       {textFilterType === 'between' && (
                         <div className="space-y-4">
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              Start Value <span className="text-red-500">*</span>
-                            </label>
-                            <input
-                              type="text"
-                              value={textFilterValue}
-                              onChange={(e) => setTextFilterValue(e.target.value)}
-                              placeholder="Enter start value"
-                              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            />
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Start Value <span className="text-red-500">*</span></label>
+                            <input type="text" value={textFilterValue} onChange={(e) => setTextFilterValue(e.target.value)} placeholder="Enter start value" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
                           </div>
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              End Value <span className="text-red-500">*</span>
-                            </label>
-                            <input
-                              type="text"
-                              value={textFilterValue2}
-                              onChange={(e) => setTextFilterValue2(e.target.value)}
-                              placeholder="Enter end value"
-                              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            />
+                            <label className="block text-sm font-medium text-gray-700 mb-2">End Value <span className="text-red-500">*</span></label>
+                            <input type="text" value={textFilterValue2} onChange={(e) => setTextFilterValue2(e.target.value)} placeholder="Enter end value" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
                           </div>
                         </div>
                       )}
 
-                      {/* Multiple Values Input (for 'in' filter) */}
                       {textFilterType === 'in' && (
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Values (one per line) <span className="text-red-500">*</span>
-                          </label>
-                          <textarea
-                            value={textFilterValues.join('\n')}
-                            onChange={(e) => setTextFilterValues(e.target.value.split('\n').filter(v => v.trim()))}
-                            placeholder="Enter values, one per line"
-                            rows={6}
-                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                          />
-                          {textFilterValues.length > 0 && (
-                            <p className="mt-2 text-xs text-gray-600">
-                              {textFilterValues.length} value(s) entered
-                            </p>
-                          )}
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Values (one per line) <span className="text-red-500">*</span></label>
+                          <textarea value={textFilterValues.join('\n')} onChange={(e) => setTextFilterValues(e.target.value.split('\n').filter(v => v.trim()))} placeholder="Enter values, one per line" rows={6} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none" />
+                          {textFilterValues.length > 0 && <p className="mt-2 text-xs text-gray-600">{textFilterValues.length} value(s) entered</p>}
                         </div>
                       )}
 
-                      {/* Info Box */}
                       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                         <div className="flex items-start gap-2">
                           <AlertTriangle className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
@@ -3697,70 +3126,29 @@ export default function TallySetting() {
                             <ul className="list-disc list-inside space-y-1 text-xs">
                               <li><strong>Equals:</strong> Exact match</li>
                               <li><strong>Contains:</strong> Value exists anywhere in text</li>
-                              <li><strong>Starts With:</strong> Text begins with value</li>
-                              <li><strong>Ends With:</strong> Text ends with value</li>
+                              <li><strong>Starts/Ends With:</strong> Text prefix or suffix</li>
                               <li><strong>Between:</strong> Alphabetically between two values</li>
                               <li><strong>In:</strong> Matches any value in the list</li>
-                              <li><strong>Empty/Not Empty:</strong> Check for null/empty values</li>
                             </ul>
                           </div>
                         </div>
                       </div>
-
-                      {/* Preview Info */}
-                      {textFilterColumn && textFilterType && (
-                        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                          <p className="text-sm font-medium text-green-900 mb-1">Filter Preview:</p>
-                          <p className="text-xs text-green-800">
-                            Will filter <strong>{textFilterColumn}</strong> where value{' '}
-                            <strong>{getTextFilterDescription().split(' ').slice(1).join(' ')}</strong>
-                          </p>
-                        </div>
-                      )}
                     </div>
 
-                    {/* Form Footer */}
                     <div className="p-6 border-t border-gray-200 bg-gray-50 space-y-3">
-                      <button
-                        onClick={handleTextFilter}
-                        disabled={!textFilterColumn || !textFilterType || isApplyingTextFilter}
-                        className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg flex items-center justify-center gap-2 hover:bg-blue-700 transition-colors font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {isApplyingTextFilter ? (
-                          <>
-                            <Loader2 className="h-5 w-5 animate-spin" />
-                            <span>Applying Filter...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Eye className="h-5 w-5" />
-                            <span>Preview Filter</span>
-                          </>
-                        )}
+                      <button onClick={handleTextFilter} disabled={!textFilterColumn || !textFilterType || isApplyingTextFilter} className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg flex items-center justify-center gap-2 hover:bg-blue-700 transition-colors font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                        {isApplyingTextFilter ? (<><Loader2 className="h-5 w-5 animate-spin" /><span>Applying Filter...</span></>) : (<><Eye className="h-5 w-5" /><span>Preview Filter</span></>)}
                       </button>
-                      <button
-                        onClick={() => {
-                          setSelectedTransformation(null);
-                          setTextFilterColumn('');
-                          setTextFilterType('equals');
-                          setTextFilterValue('');
-                          setTextFilterValue2('');
-                          setTextFilterValues([]);
-                        }}
-                        disabled={isApplyingTextFilter}
-                        className="w-full px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium disabled:opacity-50"
-                      >
+                      <button onClick={() => { setSelectedTransformation(null); setTextFilterColumn(''); setTextFilterType('equals'); setTextFilterValue(''); setTextFilterValue2(''); setTextFilterValues([]); }} disabled={isApplyingTextFilter} className="w-full px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium disabled:opacity-50">
                         Cancel
                       </button>
                     </div>
                   </div>
                 )}
 
-
                 {/* NUMBER FILTER FORM */}
                 {selectedTransformation === 'number_filter' && (
                   <div className="h-full flex flex-col">
-                    {/* Form Header */}
                     <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-teal-50 to-white">
                       <div className="flex items-center gap-2">
                         <Hash className="h-6 w-6 text-teal-600" />
@@ -3769,58 +3157,28 @@ export default function TallySetting() {
                       <p className="text-sm text-gray-600 mt-1">Filter numeric data with advanced conditions</p>
                     </div>
 
-                    {/* Form Content */}
                     <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                      {/* File Name Display */}
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Dataset Name
-                        </label>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Dataset Name</label>
                         <div className="px-4 py-3 bg-gray-100 rounded-lg border border-gray-300">
                           <div className="flex items-center gap-2">
                             {getFileIcon(selectedDataset.type)}
-                            <span className="text-sm font-semibold text-gray-900">
-                              {selectedDataset.name}
-                            </span>
+                            <span className="text-sm font-semibold text-gray-900">{selectedDataset.name}</span>
                           </div>
                         </div>
                       </div>
 
-                      {/* Column Selection */}
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Select Numeric Column <span className="text-red-500">*</span>
-                        </label>
-                        <select
-                          value={numberFilterColumn}
-                          onChange={(e) => setNumberFilterColumn(e.target.value)}
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-white text-gray-900"
-                        >
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Select Numeric Column <span className="text-red-500">*</span></label>
+                        <select value={numberFilterColumn} onChange={(e) => setNumberFilterColumn(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-white text-gray-900">
                           <option value="">-- Select a column --</option>
-                          {getColumnHeaders(selectedDataset).map((header, index) => (
-                            <option key={index} value={header}>
-                              {header}
-                            </option>
-                          ))}
+                          {getColumnHeaders(selectedDataset).map((header, index) => (<option key={index} value={header}>{header}</option>))}
                         </select>
                       </div>
 
-                      {/* Filter Type Selection */}
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Filter Type <span className="text-red-500">*</span>
-                        </label>
-                        <select
-                          value={numberFilterType}
-                          onChange={(e) => {
-                            setNumberFilterType(e.target.value);
-                            // Reset values when filter type changes
-                            setNumberFilterValue('');
-                            setNumberFilterValue2('');
-                            setNumberFilterValues([]);
-                          }}
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-white text-gray-900"
-                        >
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Filter Type <span className="text-red-500">*</span></label>
+                        <select value={numberFilterType} onChange={(e) => { setNumberFilterType(e.target.value); setNumberFilterValue(''); setNumberFilterValue2(''); setNumberFilterValues([]); }} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-white text-gray-900">
                           <option value="equals">Equals (=)</option>
                           <option value="not_equals">Not Equals (≠)</option>
                           <option value="greater_than">Greater Than (&gt;)</option>
@@ -3834,77 +3192,34 @@ export default function TallySetting() {
                         </select>
                       </div>
 
-                      {/* Single Value Input (for equals, not_equals, comparisons) */}
                       {['equals', 'not_equals', 'greater_than', 'less_than', 'greater_than_or_equal', 'less_than_or_equal'].includes(numberFilterType) && (
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Value <span className="text-red-500">*</span>
-                          </label>
-                          <input
-                            type="number"
-                            step="any"
-                            value={numberFilterValue}
-                            onChange={(e) => setNumberFilterValue(e.target.value)}
-                            placeholder="Enter numeric value"
-                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                          />
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Value <span className="text-red-500">*</span></label>
+                          <input type="number" step="any" value={numberFilterValue} onChange={(e) => setNumberFilterValue(e.target.value)} placeholder="Enter numeric value" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent" />
                         </div>
                       )}
 
-                      {/* Between Values */}
                       {numberFilterType === 'between' && (
                         <div className="space-y-4">
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              Minimum Value <span className="text-red-500">*</span>
-                            </label>
-                            <input
-                              type="number"
-                              step="any"
-                              value={numberFilterValue}
-                              onChange={(e) => setNumberFilterValue(e.target.value)}
-                              placeholder="Enter minimum value"
-                              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                            />
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Minimum Value <span className="text-red-500">*</span></label>
+                            <input type="number" step="any" value={numberFilterValue} onChange={(e) => setNumberFilterValue(e.target.value)} placeholder="Enter minimum value" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent" />
                           </div>
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              Maximum Value <span className="text-red-500">*</span>
-                            </label>
-                            <input
-                              type="number"
-                              step="any"
-                              value={numberFilterValue2}
-                              onChange={(e) => setNumberFilterValue2(e.target.value)}
-                              placeholder="Enter maximum value"
-                              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                            />
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Maximum Value <span className="text-red-500">*</span></label>
+                            <input type="number" step="any" value={numberFilterValue2} onChange={(e) => setNumberFilterValue2(e.target.value)} placeholder="Enter maximum value" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent" />
                           </div>
                         </div>
                       )}
 
-                      {/* Multiple Values Input (for 'in' filter) */}
                       {numberFilterType === 'in' && (
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Values (one per line) <span className="text-red-500">*</span>
-                          </label>
-                          <textarea
-                            value={numberFilterValues.join('\n')}
-                            onChange={(e) => setNumberFilterValues(e.target.value.split('\n').filter(v => v.trim() && !isNaN(Number(v.trim()))))}
-                            placeholder="Enter numeric values, one per line&#10;Example:&#10;100&#10;200&#10;300"
-                            rows={6}
-                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none font-mono"
-                          />
-                          {numberFilterValues.length > 0 && (
-                            <p className="mt-2 text-xs text-gray-600">
-                              {numberFilterValues.length} value(s) entered
-                            </p>
-                          )}
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Values (one per line) <span className="text-red-500">*</span></label>
+                          <textarea value={numberFilterValues.join('\n')} onChange={(e) => setNumberFilterValues(e.target.value.split('\n').filter(v => v.trim() && !isNaN(Number(v.trim()))))} placeholder="Enter numeric values, one per line" rows={6} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none font-mono" />
+                          {numberFilterValues.length > 0 && <p className="mt-2 text-xs text-gray-600">{numberFilterValues.length} value(s) entered</p>}
                         </div>
                       )}
 
-                      {/* Info Box */}
                       <div className="bg-teal-50 border border-teal-200 rounded-lg p-4">
                         <div className="flex items-start gap-2">
                           <AlertTriangle className="h-5 w-5 text-teal-600 flex-shrink-0 mt-0.5" />
@@ -3915,73 +3230,22 @@ export default function TallySetting() {
                               <li><strong>Greater/Less Than:</strong> Comparison operators</li>
                               <li><strong>Between:</strong> Range from min to max (inclusive)</li>
                               <li><strong>In:</strong> Matches any number in the list</li>
-                              <li><strong>Empty/Not Empty:</strong> Check for null values</li>
                             </ul>
                           </div>
                         </div>
                       </div>
-
-                      {/* Preview Info */}
-                      {numberFilterColumn && numberFilterType && (
-                        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                          <p className="text-sm font-medium text-green-900 mb-1">Filter Preview:</p>
-                          <p className="text-xs text-green-800">
-                            Will filter <strong>{numberFilterColumn}</strong> where value{' '}
-                            <strong>{getNumberFilterDescription().split(' ').slice(1).join(' ')}</strong>
-                          </p>
-                        </div>
-                      )}
-
-                      {/* Example Box */}
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                        <p className="text-sm font-medium text-blue-900 mb-2">Examples:</p>
-                        <div className="text-xs text-blue-800 space-y-1">
-                          <p><strong>Equals 100:</strong> Only rows where column = 100</p>
-                          <p><strong>Greater Than 50:</strong> All values &gt; 50</p>
-                          <p><strong>Between 10 and 100:</strong> Values from 10 to 100 (inclusive)</p>
-                          <p><strong>In [10, 20, 30]:</strong> Values matching 10, 20, or 30</p>
-                        </div>
-                      </div>
                     </div>
 
-                    {/* Form Footer */}
                     <div className="p-6 border-t border-gray-200 bg-gray-50 space-y-3">
-                      <button
-                        onClick={handleNumberFilter}
-                        disabled={!numberFilterColumn || !numberFilterType || isApplyingNumberFilter}
-                        className="w-full px-6 py-3 bg-teal-600 text-white rounded-lg flex items-center justify-center gap-2 hover:bg-teal-700 transition-colors font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {isApplyingNumberFilter ? (
-                          <>
-                            <Loader2 className="h-5 w-5 animate-spin" />
-                            <span>Applying Filter...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Eye className="h-5 w-5" />
-                            <span>Preview Filter</span>
-                          </>
-                        )}
+                      <button onClick={handleNumberFilter} disabled={!numberFilterColumn || !numberFilterType || isApplyingNumberFilter} className="w-full px-6 py-3 bg-teal-600 text-white rounded-lg flex items-center justify-center gap-2 hover:bg-teal-700 transition-colors font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                        {isApplyingNumberFilter ? (<><Loader2 className="h-5 w-5 animate-spin" /><span>Applying Filter...</span></>) : (<><Eye className="h-5 w-5" /><span>Preview Filter</span></>)}
                       </button>
-                      <button
-                        onClick={() => {
-                          setSelectedTransformation(null);
-                          setNumberFilterColumn('');
-                          setNumberFilterType('equals');
-                          setNumberFilterValue('');
-                          setNumberFilterValue2('');
-                          setNumberFilterValues([]);
-                        }}
-                        disabled={isApplyingNumberFilter}
-                        className="w-full px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium disabled:opacity-50"
-                      >
+                      <button onClick={() => { setSelectedTransformation(null); setNumberFilterColumn(''); setNumberFilterType('equals'); setNumberFilterValue(''); setNumberFilterValue2(''); setNumberFilterValues([]); }} disabled={isApplyingNumberFilter} className="w-full px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium disabled:opacity-50">
                         Cancel
                       </button>
                     </div>
                   </div>
                 )}
-
-
 
               </div>
             </div>
@@ -3995,6 +3259,27 @@ export default function TallySetting() {
           to { transform: translateX(0); opacity: 1; }
         }
         .animate-slide-in { animation: slide-in 0.3s ease-out; }
+
+        /* Pinned horizontal scrollbar — sidebar style */
+        .pinned-hscroll::-webkit-scrollbar {
+          height: 12px;
+        }
+        .pinned-hscroll::-webkit-scrollbar-track {
+          background: #374151;
+        }
+        .pinned-hscroll::-webkit-scrollbar-thumb {
+          background: #6b7280;
+          border-radius: 6px;
+          border: 2px solid #374151;
+        }
+        .pinned-hscroll::-webkit-scrollbar-thumb:hover {
+          background: #9ca3af;
+        }
+        .pinned-hscroll {
+          scrollbar-width: auto;
+          scrollbar-color: #6b7280 #374151;
+          background-color: #374151;
+        }
       `}</style>
     </div>
   );

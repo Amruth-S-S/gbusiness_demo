@@ -103,7 +103,7 @@ const GlobalLoader = ({ message = "Loading..." }: { message?: string }) => (
 // ─── Main Sidebar Component ─────────────────────────────────────────────────────
 const Sidebar: React.FC<SidebarProps> = ({ }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [sidebarWidth, setSidebarWidth] = useState(260);   // ← reduced from 320
+  const [sidebarWidth, setSidebarWidth] = useState(260);
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef(null);
   const [userRole, setUserRole] = useState<string | null>(null);
@@ -332,68 +332,150 @@ const Sidebar: React.FC<SidebarProps> = ({ }) => {
     return () => document.removeEventListener('mousedown', h);
   }, []);
 
-  // ─── Logo ────────────────────────────────────────────────────────────────────
+  // ─── Logo ─────────────────────────────────────────────────────────────────────
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) setSelectedFile(file);
   };
 
-  const fetchCurrentLogo = async () => {
+  // ── Read userId reliably from storage (never from React state) ───────────────
+  const getStoredUserId = (): string => {
+    if (typeof window === 'undefined') return '';
     try {
-      const response = await fetch(`${API_BASE_URL}/logo?skip=0&limit=100`, {
-        method: 'GET', headers: { 'Accept': 'application/json', 'X-API-Key': EXCEL_API_KEY },
+      const s = sessionStorage.getItem('currentUserData');
+      if (s) {
+        const d = JSON.parse(s);
+        const id = d.userId || d.user_id || d.id || '';
+        if (id) return String(id);
+      }
+      return sessionStorage.getItem('loggedInUserId') || localStorage.getItem('loggedInUserId') || '';
+    } catch { return ''; }
+  };
+
+  // ── Fetch blob from /api/logo/{userId}/view ───────────────────────────────────
+  const fetchLogoBlob = async (userId: string): Promise<string | null> => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/logo/${userId}/view`, {
+        method: 'GET',
+        headers: { 'X-API-Key': EXCEL_API_KEY },
       });
       if (response.ok) {
-        const logos = await response.json();
-        if (logos?.length > 0 && logos[0].id) await testLogoEndpoint(logos[0].id);
-        else setCurrentLogo(null);
-      } else setCurrentLogo(null);
-    } catch { setCurrentLogo(null); }
-  };
-
-  const testLogoEndpoint = async (logoId: string) => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/logo/${logoId}`, { method: 'GET', headers: { 'X-API-Key': EXCEL_API_KEY } });
-      if (response.ok) {
-        const contentType = response.headers.get('content-type');
-        if (contentType?.startsWith('image/')) { setCurrentLogo(`${API_BASE_URL}/logo/${logoId}`); }
-        else {
-          const data = await response.text();
-          try {
-            const j = JSON.parse(data);
-            const url = j.url || j.file_path || j.download_url;
-            if (url) setCurrentLogo(url);
-          } catch { /* ignore */ }
+        const blob = await response.blob();
+        if (blob.size > 0 && blob.type.startsWith('image/')) {
+          return URL.createObjectURL(blob);
         }
-      } else setCurrentLogo(null);
-    } catch { setCurrentLogo(null); }
+      }
+      return null;
+    } catch { return null; }
   };
 
+  // ── Fetch logo metadata then image from server ────────────────────────────────
+  // Rule: Never call setCurrentLogo(null) unless the server CONFIRMS no logo exists.
+  const fetchCurrentLogo = async () => {
+    const userId = getStoredUserId();
+    if (!userId) return; // userId not ready — keep showing cached preview
+
+    try {
+      // First, call the metadata endpoint to verify existence
+      const metadataRes = await fetch(`${API_BASE_URL}/api/logo/${userId}`, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json', 'X-API-Key': EXCEL_API_KEY },
+      });
+
+      // If the endpoint returns 404 or any error, the user has no logo
+      if (!metadataRes.ok) {
+        setCurrentLogo(null);
+        return;
+      }
+
+      const metadata = await metadataRes.json();
+      // Check if the response indicates success and contains a logo object
+      const logoExists = metadata?.success === true && metadata?.logo != null;
+
+      if (!logoExists) {
+        setCurrentLogo(null);
+        return;
+      }
+
+      // Logo exists — fetch the actual image blob
+      const blobUrl = await fetchLogoBlob(userId);
+      if (blobUrl) {
+        setCurrentLogo(blobUrl); // replace preview with real server image
+      }
+      // If blob fetch failed (network hiccup), keep cached preview — don't blank
+    } catch {
+      // Any error → keep showing cached preview, never blank
+    }
+  };
+
+  // ── On mount: show cached preview for this user instantly ────────────────────
+  const loadStoredLogo = () => {
+    const userId = getStoredUserId();
+    if (!userId) return; // no userId — server fetch will handle it via useEffect
+
+    try {
+      const cached = localStorage.getItem(`logo_cache_${userId}`);
+      if (cached) {
+        const d = JSON.parse(cached);
+        if (d.userId === userId && d.localUrl) {
+          setCurrentLogo(d.localUrl); // instant display, no network needed
+        }
+      }
+      // Note: DO NOT call fetchCurrentLogo() here.
+      // useEffect([userData.userId]) will do the server refresh once state loads.
+    } catch { /* ignore corrupt cache */ }
+  };
+
+  // ── Upload logo ───────────────────────────────────────────────────────────────
   const handleLogoSubmit = async () => {
     if (!selectedFile) { toast.error('Please select a file'); return; }
+    const userId = getStoredUserId();
+    if (!userId) { toast.error('User not found. Please log in again.'); return; }
+
     setIsUploading(true);
     try {
+      // Show local preview immediately
       const localUrl = await new Promise<string>(resolve => {
         const reader = new FileReader();
         reader.onload = e => resolve(e.target?.result as string);
         reader.readAsDataURL(selectedFile);
       });
+      setCurrentLogo(localUrl);
+
       const formData = new FormData();
       formData.append('file', selectedFile);
-      formData.append('description', logoDescription);
-      setCurrentLogo(localUrl);
-      const response = await fetch(`${API_BASE_URL}/logo`, { method: 'POST', headers: { 'X-API-Key': EXCEL_API_KEY }, body: formData });
+      if (logoDescription.trim()) formData.append('description', logoDescription);
+
+      const response = await fetch(`${API_BASE_URL}/api/logo/upload/${userId}`, {
+        method: 'POST',
+        headers: { 'X-API-Key': EXCEL_API_KEY },
+        body: formData,
+      });
+
       if (response.ok) {
-        const result = await response.json();
         toast.success('Logo updated successfully!');
         handleLogoCancel();
-        localStorage.setItem('currentLogoFile', JSON.stringify({ localUrl, filename: selectedFile.name, uploadDate: new Date().toISOString(), backendId: result.id || null }));
+        // Fetch the real blob and update display
+        const blobUrl = await fetchLogoBlob(userId);
+        setCurrentLogo(blobUrl || localUrl); // fall back to local preview if blob fails
+        // Save per-user cache
+        localStorage.setItem(`logo_cache_${userId}`, JSON.stringify({
+          localUrl,
+          filename: selectedFile.name,
+          uploadDate: new Date().toISOString(),
+          userId,
+        }));
+        localStorage.removeItem('currentLogoFile'); // remove legacy shared key
       } else {
-        toast.error('Upload failed. Please try again.');
-        setCurrentLogo(null);
+        const err = await response.json().catch(() => ({}));
+        toast.error(err.detail || err.message || 'Upload failed. Please try again.');
+        // Don't blank — keep the preview visible
       }
-    } catch { toast.error('Network error. Please check your connection.'); setCurrentLogo(null); }
-    finally { setIsUploading(false); }
+    } catch {
+      toast.error('Network error. Please check your connection.');
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const handleLogoCancel = () => { setIsLogoModalOpen(false); setSelectedFile(null); setLogoDescription(''); };
@@ -444,18 +526,10 @@ const Sidebar: React.FC<SidebarProps> = ({ }) => {
     loadStoredLogo();
   }, []);
 
-  const loadStoredLogo = () => {
-    try {
-      const storedLogo = localStorage.getItem('currentLogoFile');
-      if (storedLogo) {
-        const logoData = JSON.parse(storedLogo);
-        setCurrentLogo(logoData.localUrl);
-        const imgElement = new window.Image();
-        imgElement.onerror = () => fetchCurrentLogo();
-        imgElement.src = logoData.localUrl;
-      } else fetchCurrentLogo();
-    } catch { fetchCurrentLogo(); }
-  };
+  // ── Once userId is confirmed in state, fetch real blob from server ────────────
+  useEffect(() => {
+    if (userData.userId) fetchCurrentLogo();
+  }, [userData.userId]);
 
   // ─── Create Main Board ────────────────────────────────────────────────────────
   const handleSave = async () => {
@@ -753,7 +827,14 @@ const Sidebar: React.FC<SidebarProps> = ({ }) => {
                 {currentLogo ? (
                   <div className="relative">
                     <div className="bg-white/10 backdrop-blur-sm rounded-lg p-2 border border-blue-400/20">
-                      <img src={currentLogo} alt="Logo" width={100} height={32} className="object-contain max-h-8" onError={() => setCurrentLogo(null)} />
+                      <img
+                        src={currentLogo}
+                        alt="Logo"
+                        width={100}
+                        height={32}
+                        className="object-contain max-h-8"
+                        onError={() => setCurrentLogo(null)}
+                      />
                     </div>
                     <button onClick={() => setIsLogoModalOpen(true)} className="absolute -top-1 -right-1 p-1 bg-blue-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-blue-500 shadow-md">
                       <Edit3 className="w-2.5 h-2.5" />
@@ -1071,7 +1152,7 @@ const Sidebar: React.FC<SidebarProps> = ({ }) => {
                     <label htmlFor="logo-upload" className="cursor-pointer flex flex-col items-center">
                       <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center mb-2"><Upload className="w-5 h-5 text-blue-600" /></div>
                       <span className="text-xs font-medium text-gray-700 mb-1">{selectedFile ? selectedFile.name : 'Click to upload'}</span>
-                      <span className="text-xs text-gray-500">PNG, JPG, GIF up to 10MB</span>
+                      <span className="text-xs text-gray-500">PNG, JPG, GIF, WebP, SVG up to 5MB</span>
                     </label>
                   </div>
                 </div>
