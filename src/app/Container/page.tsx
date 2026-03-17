@@ -3732,7 +3732,7 @@ const fetchRows = async () => {
           { key: "prompts",       label: "Manage Prompts" },
           { key: "repository",   label: "Prompts Repository" },
           { key: "tables",       label: "Manage Tables" },
-          // { key: "tally",        label: "Manage ETL" },
+          { key: "tally",        label: "Manage ETL" },
           { key: "documentation",label: "AI Documentation" },
           // { key: "master",       label: "Master Settings" },
           // { key: "parameters",   label: "Parameter Settings" },
@@ -3763,7 +3763,7 @@ const fetchRows = async () => {
               { key: "prompts",        label: "Manage Prompts" },
               { key: "repository",    label: "Prompts Repository" },
               { key: "tables",        label: "Manage Tables" },
-              // { key: "tally",         label: "Manage ETL" },
+              { key: "tally",         label: "Manage ETL" },
               { key: "documentation", label: "AI Documentation" },
               // { key: "master",        label: "Master Settings" },
               // { key: "parameters",    label: "Parameter Settings" },
@@ -5986,59 +5986,143 @@ const fetchRows = async () => {
                 )}
 
                 {/* Charts Grid */}
-                <div className="flex flex-wrap justify-center gap-3">
-                  {runResult.charts.map((chart: ChartData, index: number) => {
-                    switch (chart.chart_type) {
-                      case 'pie':
-                        return (
-                          <div key={`pie-chart-${index}`} className="w-full max-w-[400px] flex-1">
-                            <h5 className="text-xs font-semibold text-center mb-1 text-gray-700">Pie Chart</h5>
-                            <div style={{ height: "300px" }}>
-                              <Pie data={getPieData(chart)} options={{ maintainAspectRatio: false, plugins: { legend: { display: true, position: "top" } } }} />
-                            </div>
-                            <div className="mt-2 p-2 bg-gray-50 rounded border border-gray-100">
-                              <h6 className="text-xs font-semibold mb-1">Insights:</h6>
-                              <ul className="list-disc list-inside space-y-0.5">
-                                {chart.insight?.map((insight, i) => <li key={i} className="text-[10px] text-gray-600">{insight}</li>)}
-                              </ul>
-                            </div>
-                          </div>
-                        );
-                      case 'bar':
-                        return (
-                          <div key={`bar-chart-${index}`} className="w-full max-w-[500px] flex-1">
-                            <h5 className="text-xs font-semibold text-center mb-1 text-gray-700">Bar Chart</h5>
-                            <div style={{ height: "300px" }}>
-                              <Bar data={getChartData(chart, 'bar')} options={{ maintainAspectRatio: false, plugins: { legend: { display: true, position: "top" } }, scales: { y: { beginAtZero: true } } }} />
-                            </div>
-                            <div className="mt-2 p-2 bg-gray-50 rounded border border-gray-100">
-                              <h6 className="text-xs font-semibold mb-1">Insights:</h6>
-                              <ul className="list-disc list-inside space-y-0.5">
-                                {chart.insight?.map((insight, i) => <li key={i} className="text-[10px] text-gray-600">{insight}</li>)}
-                              </ul>
-                            </div>
-                          </div>
-                        );
-                      case 'line':
-                        return (
-                          <div key={`line-chart-${index}`} className="w-full max-w-[500px] flex-1">
-                            <h5 className="text-xs font-semibold text-center mb-1 text-gray-700">Line Chart</h5>
-                            <div style={{ height: "300px" }}>
-                              <Line data={getChartData(chart, 'line')} options={{ maintainAspectRatio: false, plugins: { legend: { display: true, position: "top" } }, scales: { y: { beginAtZero: true } } }} />
-                            </div>
-                            <div className="mt-2 p-2 bg-gray-50 rounded border border-gray-100">
-                              <h6 className="text-xs font-semibold mb-1">Insights:</h6>
-                              <ul className="list-disc list-inside space-y-0.5">
-                                {chart.insight?.map((insight, i) => <li key={i} className="text-[10px] text-gray-600">{insight}</li>)}
-                              </ul>
-                            </div>
-                          </div>
-                        );
-                      default:
-                        return null;
+          {/* Charts Grid */}
+<div className="flex flex-wrap justify-center gap-3 items-stretch">
+
+  {runResult.charts.map((chart: ChartData, index: number) => {
+    switch (chart.chart_type) {
+
+      case 'pie':
+        return (
+          <div key={`pie-chart-${index}`} className="w-full max-w-[400px] flex-1 flex flex-col">
+            <h5 className="text-xs font-semibold text-center mb-1 text-gray-700">Pie Chart</h5>
+            {/* Fixed height chart area */}
+            <div style={{ height: "300px", flexShrink: 0 }}>
+              <Pie
+                data={getPieData(chart)}
+                options={{
+                  maintainAspectRatio: false,
+                  plugins: { legend: { display: true, position: "top" } }
+                }}
+              />
+            </div>
+            {/* Insights pinned to bottom */}
+            <div className="mt-auto pt-2">
+              <div className="p-2 bg-gray-50 rounded border border-gray-100">
+                <h6 className="text-xs font-semibold mb-1">Insights:</h6>
+                <ul className="list-disc list-inside space-y-0.5">
+                  {chart.insight?.map((insight, i) => (
+                    <li key={i} className="text-[10px] text-gray-600">{insight}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'bar':
+        return (
+          <div key={`bar-chart-${index}`} className="w-full max-w-[500px] flex-1 flex flex-col">
+            <h5 className="text-xs font-semibold text-center mb-1 text-gray-700">Bar Chart</h5>
+            <div style={{ height: "300px", flexShrink: 0 }}>
+              <Bar
+                data={getChartData(chart, 'bar')}
+                options={{
+                  maintainAspectRatio: false,
+                  plugins: {
+                    legend: { display: true, position: "top" },
+                    tooltip: {
+                      callbacks: { title: (items) => items.map(i => i.label) }
                     }
-                  })}
-                </div>
+                  },
+                  scales: {
+                    x: {
+                      ticks: {
+                        maxRotation: 45,
+                        minRotation: 30,
+                        font: { size: 9 },
+                        callback: function (value) {
+                          const label = this.getLabelForValue(value as number);
+                          return label && label.length > 12
+                            ? label.substring(0, 12) + '…'
+                            : label;
+                        },
+                      },
+                    },
+                    y: { beginAtZero: true },
+                  },
+                }}
+              />
+            </div>
+            <div className="mt-auto pt-2">
+              <div className="p-2 bg-gray-50 rounded border border-gray-100">
+                <h6 className="text-xs font-semibold mb-1">Insights:</h6>
+                <ul className="list-disc list-inside space-y-0.5">
+                  {chart.insight?.map((insight, i) => (
+                    <li key={i} className="text-[10px] text-gray-600">{insight}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'line':
+        return (
+          <div key={`line-chart-${index}`} className="w-full max-w-[500px] flex-1 flex flex-col">
+            <h5 className="text-xs font-semibold text-center mb-1 text-gray-700">Line Chart</h5>
+            <div style={{ height: "300px", flexShrink: 0 }}>
+              <Line
+                data={getChartData(chart, 'line')}
+                options={{
+                  maintainAspectRatio: false,
+                  plugins: {
+                    legend: { display: true, position: "top" },
+                    tooltip: {
+                      callbacks: { title: (items) => items.map(i => i.label) }
+                    }
+                  },
+                  scales: {
+                    x: {
+                      ticks: {
+                        maxRotation: 45,
+                        minRotation: 30,
+                        font: { size: 9 },
+                        callback: function (value) {
+                          const label = this.getLabelForValue(value as number);
+                          return label && label.length > 12
+                            ? label.substring(0, 12) + '…'
+                            : label;
+                        },
+                      },
+                    },
+                    y: { beginAtZero: true },
+                  },
+                }}
+              />
+            </div>
+            <div className="mt-auto pt-2">
+              <div className="p-2 bg-gray-50 rounded border border-gray-100">
+                <h6 className="text-xs font-semibold mb-1">Insights:</h6>
+                <ul className="list-disc list-inside space-y-0.5">
+                  {chart.insight?.map((insight, i) => (
+                    <li key={i} className="text-[10px] text-gray-600">{insight}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  })}
+</div>
+
+
+
+
               </div>
             )}
 

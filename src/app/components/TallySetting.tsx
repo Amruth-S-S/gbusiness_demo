@@ -1229,12 +1229,12 @@ export default function TallySetting() {
     }
   };
 
-  const cancelFilterPreview = async () => {
+ const cancelFilterPreview = async () => {
     if (!selectedDataset) return;
-    try {
-      // ── For rename/type_cast: backend already changed the data,
-      //    so we must undo before reloading ──
-      if (currentFilterType === 'rename_column' || currentFilterType === 'type_cast') {
+
+    // ── Step 1: Best-effort undo for rename/type_cast ──
+    if (currentFilterType === 'rename_column' || currentFilterType === 'type_cast') {
+      try {
         const undoUrl = `http://127.0.0.1:8000/undo-latest/?file_name=${encodeURIComponent(selectedDataset.name)}`;
         let undoResponse = await fetch(undoUrl, { method: 'POST', headers: { "X-API-Key": EXCEL_API_KEY } });
         if (undoResponse.status === 405) undoResponse = await fetch(undoUrl, { method: 'PUT', headers: { "X-API-Key": EXCEL_API_KEY } });
@@ -1244,32 +1244,42 @@ export default function TallySetting() {
             ? 'Rename cancelled — column restored to original name'
             : 'Type cast cancelled — column restored to original type');
         } else {
-          showToast('warning', 'Could not auto-undo. Please use the Undo button.');
+          showToast('warning', 'Could not auto-undo. Please use the Undo button to revert.');
         }
+      } catch {
+        showToast('warning', 'Could not auto-undo. Please use the Undo button to revert.');
       }
+    }
 
+    // ── Step 2: Best-effort data reload ──
+    try {
       const encodedFilename = encodeURIComponent(selectedDataset.name);
-      const apiUrl = `http://127.0.0.1:8000/view-data/?file_name=${encodedFilename}`;
-      const response = await fetch(apiUrl, { method: 'GET', headers: { "X-API-Key": EXCEL_API_KEY } });
+      const response = await fetch(
+        `http://127.0.0.1:8000/view-data/?file_name=${encodedFilename}`,
+        { method: 'GET', headers: { "X-API-Key": EXCEL_API_KEY } }
+      );
       if (response.ok) {
-        const fullDataResponse = await response.json();
-        const fullData = fullDataResponse.data || [];
-        const columnHeaders = fullDataResponse.columns || [];
-        const rows = fullDataResponse.rows || fullData.length;
+        const json = await response.json();
+        const fullData = json.data || [];
+        const columnHeaders = json.columns || [];
+        const rows = json.rows || fullData.length;
         setSelectedDataset({ ...selectedDataset, fullData, rows, columns: columnHeaders.length, columnHeaders });
       }
-      setIsPreviewMode(false);
-      setPreviewData(null);
-      setCurrentFilterType(null);
-      setSortColumn(null);
-      setSortOrder('asc');
-      setHasTransformations(false);
-      resetFilterForms();
-      if (currentFilterType !== 'rename_column' && currentFilterType !== 'type_cast') {
-        showToast('info', 'Preview cancelled - showing last saved state');
-      }
-    } catch (error) {
-      showToast('error', 'Failed to cancel preview');
+    } catch {
+      // silent — state still resets below
+    }
+
+    // ── Step 3: Always reset preview state (runs regardless of API results) ──
+    setIsPreviewMode(false);
+    setPreviewData(null);
+    setCurrentFilterType(null);
+    setSortColumn(null);
+    setSortOrder('asc');
+    setHasTransformations(false);
+    resetFilterForms();
+
+    if (currentFilterType !== 'rename_column' && currentFilterType !== 'type_cast') {
+      showToast('info', 'Preview cancelled — showing last saved state');
     }
   };
 
