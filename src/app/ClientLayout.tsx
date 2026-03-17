@@ -15,9 +15,9 @@ export default function ClientLayout({
   const isCXOPage = pathname === "/cxo" || pathname === "/CXO";
   
   useEffect(() => {
-    console.log('Current pathname:', pathname);
-    console.log('Is consultant page:', isConsultantPage);
-    console.log('Is CXO page:', isCXOPage);
+    // console.log('Current pathname:', pathname);
+    // console.log('Is consultant page:', isConsultantPage);
+    // console.log('Is CXO page:', isCXOPage);
   }, [pathname, isConsultantPage, isCXOPage]);
 
   return (
