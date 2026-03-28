@@ -398,7 +398,7 @@ export default function Page() {
 
       // Single API that handles everything (data source + files + table)
       const response = await fetch(
-        `${API_BASE_URL}/main-boards/boards/data-sources/${sourceId}/full?user_id=${parseInt(userId, 10)}`,
+        `${API_BASE_URL}/main-boards/boards/data-sources/${sourceId}/complete?user_id=${parseInt(userId, 10)}`,
         {
           method: "DELETE",
           headers: { accept: "application/json", "X-API-Key": EXCEL_API_KEY },
@@ -3740,9 +3740,9 @@ export default function Page() {
 
                   // { key: "tally",        label: "Manage ETL" },
 
-                  // { key: "master",       label: "Master Settings" },
+                  { key: "master",       label: "Master Settings" },
                   // { key: "parameters",   label: "Parameter Settings" },
-                  // { key: "timeline",     label: "Timeline Settings" },
+                  { key: "timeline",     label: "Timeline Settings" },
                 ].map((tab) => (
                   <button
                     key={tab.key}
@@ -3772,9 +3772,9 @@ export default function Page() {
 
                       // { key: "tally",         label: "Manage ETL" },
 
-                      // { key: "master",        label: "Master Settings" },
+                      { key: "master",        label: "Master Settings" },
                       // { key: "parameters",    label: "Parameter Settings" },
-                      // { key: "timeline",      label: "Timeline Settings" },
+                      { key: "timeline",      label: "Timeline Settings" },
                     ].find((t) => t.key === activeTab)?.label ?? "Select Tab"}
                   </span>
                   <span className="ml-2 text-gray-400 text-xs">{isMobileMenuOpen ? "▲" : "▼"}</span>

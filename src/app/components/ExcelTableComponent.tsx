@@ -1,1655 +1,915 @@
-"use client";
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, Trash2, Check, X, Save, Loader2, Edit, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react';
+import {
+    Plus, Trash2, Check, X, Save, Loader2,
+    ChevronDown, ChevronUp, AlertTriangle, Upload, Edit2, RefreshCw
+} from 'lucide-react';
 
-interface ExcelFieldData {
+interface FieldData {
     id: number;
     fieldName: string;
     fieldDescription: string;
     fieldType: string;
     fieldLength: string;
     fieldValue: string;
-    apiId?: any;
-    originalFieldName?: string; // Track original field name for updates
+    originalFieldName?: string;
+    source?: string;
 }
 
 interface TableData {
     id: string;
     table_name: string;
     description: string;
+    has_uploaded_file?: boolean;
+    file_name?: string | null;
+    file_size_bytes?: number | null;
+    row_count?: number | null;
+    column_count?: number | null;
+    fields?: any[];
     created_at?: string;
     updated_at?: string;
-}
-
-interface NewTableData {
-    table_name: string;
-    description: string;
 }
 
 interface ExcelTableComponentProps {
     boardId?: string | null;
 }
 
+const FIELD_TYPES = ['char', 'list', 'number', 'date', 'boolean'];
+const FIELDS_PER_PAGE = 10;
+
 const ExcelTableComponent = ({ boardId }: ExcelTableComponentProps) => {
+
+    const loggedInUserId = (() => {
+        try {
+            const d = sessionStorage.getItem('currentUserData');
+            if (d) return String(JSON.parse(d).userId);
+        } catch { }
+        return localStorage.getItem('loggedInUserId') || null;
+    })();
+
     const [tables, setTables] = useState<TableData[]>([]);
-    const [showTableModal, setShowTableModal] = useState(false);
-    const [newTable, setNewTable] = useState<NewTableData>({ table_name: '', description: '' });
-    const [expandedTable, setExpandedTable] = useState<string | null>(null);
-    const [editingTableId, setEditingTableId] = useState<string | null>(null);
-    const [editTableData, setEditTableData] = useState<NewTableData>({ table_name: '', description: '' });
-    const [selectedTableForFields, setSelectedTableForFields] = useState<string | null>(null);
     const [tablesLoading, setTablesLoading] = useState(false);
+    const [expandedTableId, setExpandedTableId] = useState<string | null>(null);
+
+    const [showCreateModal, setShowCreateModal] = useState(false);
     const [creating, setCreating] = useState(false);
+    const [newTableName, setNewTableName] = useState('');
+    const [newTableDesc, setNewTableDesc] = useState('');
+
+    const [uploadingFor, setUploadingFor] = useState<string | null>(null);
+    const [datasetFile, setDatasetFile] = useState<File | null>(null);
+    const [isDraggingDataset, setIsDraggingDataset] = useState(false);
+    const [uploadingDataset, setUploadingDataset] = useState(false);
+    const datasetFileInputRef = useRef<HTMLInputElement>(null);
+
+    const [fieldsMap, setFieldsMap] = useState<{ [tableId: string]: FieldData[] }>({});
+    const [fieldsLoading, setFieldsLoading] = useState<{ [tableId: string]: boolean }>({});
+    const [fieldPage, setFieldPage] = useState<{ [tableId: string]: number }>({});
+    const [savingField, setSavingField] = useState(false);
+    const [editingCell, setEditingCell] = useState<string | null>(null);
+    const [editCellValue, setEditCellValue] = useState('');
+    const [modifiedRows, setModifiedRows] = useState<Set<number>>(new Set());
+    const cellInputRef = useRef<HTMLInputElement | HTMLSelectElement>(null);
+
+    const [editingTableId, setEditingTableId] = useState<string | null>(null);
+    const [editTableName, setEditTableName] = useState('');
+    const [editTableDesc, setEditTableDesc] = useState('');
     const [updating, setUpdating] = useState(false);
 
-    const [currentFieldsPage, setCurrentFieldsPage] = useState(1);
-    const [fieldsPerPage] = useState(5); // Set to 5 items per page
-    const [searchTerm, setSearchTerm] = useState('');
+    const [toast, setToast] = useState<{ show: boolean; message: string; type: 'success' | 'error' | 'warning' }>({ show: false, message: '', type: 'success' });
+    const [confirmDialog, setConfirmDialog] = useState<{ show: boolean; title: string; message: string; onConfirm: () => void; onCancel: () => void; }>({
+        show: false, title: '', message: '', onConfirm: () => { }, onCancel: () => { }
+    });
 
-    const [excelData, setExcelData] = useState<ExcelFieldData[]>([]);
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '';
+    const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
 
-    // Filter and paginate
-    const filteredTables = tables.filter(table =>
-        table.table_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (table.description && table.description.toLowerCase().includes(searchTerm.toLowerCase()))
-    );
-
-    const indexOfLastField = currentFieldsPage * fieldsPerPage;
-    const indexOfFirstField = indexOfLastField - fieldsPerPage;
-    const currentFields = excelData.slice(indexOfFirstField, indexOfLastField);
-    // Calculate total number of pages for fields
-    const totalFieldsPages = Math.ceil(excelData.length / fieldsPerPage);
-    // Change page function
-    const paginateFields = (pageNumber: React.SetStateAction<number>) => {
-        setCurrentFieldsPage(pageNumber);
-    };
-
-    const [toast, setToast] = useState<{
-        show: boolean;
-        message: string;
-        type: 'success' | 'error' | 'warning';
-    }>({ show: false, message: '', type: 'success' });
-
-    const [confirmDialog, setConfirmDialog] = useState<{
-        show: boolean;
-        title: string;
-        message: string;
-        onConfirm: () => void;
-        onCancel: () => void;
-    }>({ show: false, title: '', message: '', onConfirm: () => { }, onCancel: () => { } });
-
-    const [editingExcelCell, setEditingExcelCell] = useState<string | null>(null);
-    const [editExcelValue, setEditExcelValue] = useState<string>('');
-    const [selectedExcelRows, setSelectedExcelRows] = useState<Set<number>>(new Set());
-    const [savingExcel, setSavingExcel] = useState<boolean>(false);
-    const [savedExcelRows, setSavedExcelRows] = useState<Set<number>>(new Set());
-    const [modifiedExcelRows, setModifiedExcelRows] = useState<Set<number>>(new Set());
-    const [loadingFields, setLoadingFields] = useState<boolean>(false);
-    const [expandedListFields, setExpandedListFields] = useState<Set<number>>(new Set());
-    const [listValues, setListValues] = useState<{ [fieldId: number]: string[] }>({});
-    const excelInputRef = useRef<HTMLInputElement | HTMLSelectElement>(null);
-
-    const excelFieldTypes = ['char', 'list', 'number', 'date', 'boolean'];
-
-   const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '';
-   const EXCEL_API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
+    // ── Helpers ───────────────────────────────────────────────────────────────
 
     const showToast = (message: string, type: 'success' | 'error' | 'warning' = 'success') => {
         setToast({ show: true, message, type });
-        setTimeout(() => {
-            setToast({ show: false, message: '', type: 'success' });
-        }, 4000);
+        setTimeout(() => setToast({ show: false, message: '', type: 'success' }), 4000);
     };
 
-    const showConfirmDialog = (title: string, message: string, onConfirm: () => void) => {
+    const showConfirm = (title: string, message: string, onConfirm: () => void) => {
         setConfirmDialog({
-            show: true,
-            title,
-            message,
-            onConfirm: () => {
-                onConfirm();
-                setConfirmDialog({ show: false, title: '', message: '', onConfirm: () => { }, onCancel: () => { } });
-            },
-            onCancel: () => {
-                setConfirmDialog({ show: false, title: '', message: '', onConfirm: () => { }, onCancel: () => { } });
-            }
+            show: true, title, message,
+            onConfirm: () => { onConfirm(); setConfirmDialog(p => ({ ...p, show: false })); },
+            onCancel: () => setConfirmDialog(p => ({ ...p, show: false }))
         });
     };
 
+    // ── Effects ───────────────────────────────────────────────────────────────
+
     useEffect(() => {
-        if (boardId) {
-            fetchTables();
-        } else {
-            // Clear tables if no boardId is provided
-            setTables([]);
-            setExcelData([]);
-            setSelectedTableForFields(null);
-            setExpandedTable(null);
+        if (boardId && loggedInUserId) fetchTables();
+        else { setTables([]); setFieldsMap({}); }
+    }, [boardId, loggedInUserId]);
+
+    useEffect(() => {
+        if (editingCell && cellInputRef.current) {
+            cellInputRef.current.focus();
+            if (cellInputRef.current instanceof HTMLInputElement) cellInputRef.current.select();
         }
-    }, [boardId]);
+    }, [editingCell]);
+
+    // ── Fetch Tables ──────────────────────────────────────────────────────────
 
     const fetchTables = async () => {
-        if (!boardId) {
-            console.log('No boardId provided, skipping table fetch');
-            setTables([]);
-            return;
-        }
-
+        if (!loggedInUserId) return;
         setTablesLoading(true);
         try {
-            // Fetch all tables first, then filter by boardId (following your code pattern)
-            const response = await fetch(
-                `${API_BASE_URL}/main-boards/boards/master-data-settings/?active_only=false`,
-                {
-                    headers: {
-                        "X-API-Key": EXCEL_API_KEY
-                    }
-                }
+            const res = await fetch(
+                `${API_BASE_URL}/api/master-data/user/${loggedInUserId}?active_only=false`,
+                { headers: { 'X-API-Key': API_KEY } }
             );
-
-            if (response.ok) {
-                const data = await response.json();
-                console.log('All fetched tables:', data);
-                console.log('Current boardId:', boardId, 'Type:', typeof boardId);
-
-                // Check if the API response contains board_id field
-                if (data.length > 0) {
-                    console.log('First table structure:', Object.keys(data[0]));
-                }
-
-                // Try different possible field names for board_id
-                const filteredData = data.filter(
-                    (table: any) => {
-                        console.log('Table data:', table);
-                        // Try multiple possible field names
-                        const tableBoardId = table.board_id || table.boardId || table.board || table.id;
-                        console.log('Table board identifier:', tableBoardId, 'Current boardId:', boardId);
-                        return String(tableBoardId) === String(boardId);
-                    }
-                );
-
-                console.log('Filtered tables for board', boardId, ':', filteredData);
-
-                // If no board_id field exists, show all tables for now (temporary fix)
-                if (data.length > 0 && !data[0].hasOwnProperty('board_id') && !data[0].hasOwnProperty('boardId')) {
-                    console.log('No board_id field found in response, showing all tables');
-                    setTables(data);
-                } else {
-                    setTables(filteredData);
-                }
-
-                if (filteredData.length === 0 && data.length > 0) {
-                    console.log('No tables found for board', boardId, 'but', data.length, 'total tables exist');
-                }
-            } else {
-                console.error('Failed to fetch tables, status:', response.status);
-                const errorText = await response.text();
-                console.error('Error response:', errorText);
-                setTables([]);
-            }
-        } catch (error) {
-            console.error('Error fetching tables for board', boardId, ':', error);
-            setTables([]);
-        } finally {
-            setTablesLoading(false);
-        }
+            if (res.ok) {
+                const data = await res.json();
+                setTables((data.master_data_list || []).map((item: any) => ({
+                    id: String(item.id),
+                    table_name: item.table_name,
+                    description: item.description,
+                    has_uploaded_file: item.has_uploaded_file,
+                    file_name: item.file_name,
+                    file_size_bytes: item.file_size_bytes,
+                    row_count: item.row_count,
+                    column_count: item.column_count,
+                    fields: item.fields || [],
+                    created_at: item.created_at,
+                    updated_at: item.updated_at,
+                })));
+            } else { setTables([]); }
+        } catch { setTables([]); }
+        finally { setTablesLoading(false); }
     };
 
-    const handleCreateTable = async () => {
-        if (!boardId) {
-            showToast('No board selected. Please select a board first.', 'error');
-            return;
-        }
+    // ── Fetch Fields ──────────────────────────────────────────────────────────
 
-        if (!newTable.table_name.trim() || !newTable.description.trim()) {
-            showToast('Please fill in both table name and description', 'error');
-            return;
-        }
-
-        // Additional validation to ensure only one table per board
-        if (tables.length > 0) {
-            showToast('Only one master data table is allowed per board', 'error');
-            return;
-        }
-
-        setCreating(true);
+    const fetchFields = async (tableId: string) => {
+        setFieldsLoading(p => ({ ...p, [tableId]: true }));
         try {
-            // Include boardId in the request body - use the correct field name
-            const requestBody = {
-                table_name: newTable.table_name,
-                description: newTable.description,
-                board_id: parseInt(boardId) // Ensure it's a number like in your other components
-            };
-
-            console.log('Creating table with data:', requestBody);
-
-            const response = await fetch(
-                `${API_BASE_URL}/main-boards/boards/master-data-settings/manual`,
-                {
-                    method: 'POST',
-                    headers: {
-                        "X-API-Key": EXCEL_API_KEY,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(requestBody)
-                }
+            const res = await fetch(
+                `${API_BASE_URL}/api/master-data/${tableId}/fields?required_only=false`,
+                { headers: { 'X-API-Key': API_KEY } }
             );
-
-            if (response.ok) {
-                const responseData = await response.json();
-                console.log('Table created successfully:', responseData);
-                setShowTableModal(false);
-                setNewTable({ table_name: '', description: '' });
-                fetchTables(); // Refresh the tables list
-                showToast('Master data table created successfully!', 'success');
-            } else {
-                const errorData = await response.json();
-                console.error('Error creating table:', errorData);
-                showToast(`Failed to create table: ${errorData.detail || 'Unknown error'}`, 'error');
+            if (res.ok) {
+                const data = await res.json();
+                const raw: any[] = Array.isArray(data) ? data : data.fields || data.data || [];
+                setFieldsMap(p => ({
+                    ...p,
+                    [tableId]: raw.map((f: any, i: number) => ({
+                        id: i + 1,
+                        fieldName: f.field_name || '',
+                        fieldDescription: f.field_description || '',
+                        fieldType: f.field_datatype || f.field_type || 'char',
+                        fieldLength: f.field_length?.toString() || '',
+                        fieldValue: Array.isArray(f.field_value)
+                            ? f.field_value.join(', ')
+                            : (typeof f.field_value === 'object' && f.field_value !== null)
+                                ? JSON.stringify(f.field_value)
+                                : f.field_value || '',
+                        originalFieldName: f.field_name || '',
+                        source: f.source || 'manual',
+                    }))
+                }));
+                setFieldPage(p => ({ ...p, [tableId]: 1 }));
             }
-        } catch (error) {
-            console.error('Error creating table:', error);
-            showToast('An error occurred while creating the table', 'error');
-        } finally {
-            setCreating(false);
-        }
+        } catch { showToast('Error loading fields', 'error'); }
+        finally { setFieldsLoading(p => ({ ...p, [tableId]: false })); }
     };
 
-    const handleEditTableStart = (table: TableData) => {
-        setExpandedTable(table.id);
-        setEditingTableId(table.id);
-        setEditTableData({
-            table_name: table.table_name,
-            description: table.description
-        });
-        showToast('Edit mode activated', 'success');
-    };
-
-    const handleEditTableCancel = () => {
-        setEditingTableId(null);
-        setEditTableData({ table_name: '', description: '' });
-        showToast('Edit cancelled', 'warning');
-    };
-
-    const handleEditTableSave = async (tableId: string) => {
-        if (!editTableData.table_name.trim() || !editTableData.description.trim()) {
-            showToast('Please fill in both table name and description', 'error');
-            return;
-        }
-
-        setUpdating(true);
-        try {
-            const response = await fetch(
-                `${API_BASE_URL}/main-boards/boards/master-data-settings/${tableId}`,
-                {
-                    method: 'PUT',
-                    headers: {
-                        "X-API-Key": EXCEL_API_KEY,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(editTableData)
-                }
-            );
-
-            if (response.ok) {
-                setEditingTableId(null);
-                setEditTableData({ table_name: '', description: '' });
-                fetchTables();
-                showToast('Table updated successfully!', 'success');
-            } else {
-                const errorData = await response.json();
-                showToast(`Failed to update table: ${errorData.detail || 'Unknown error'}`, 'error');
-            }
-        } catch (error) {
-            console.error('Error updating table:', error);
-            showToast('An error occurred while updating the table', 'error');
-        } finally {
-            setUpdating(false);
-        }
-    };
-
-    const handleDeleteTable = (tableId: string, tableName: string) => {
-        setConfirmDialog({
-            show: true,
-            title: 'Delete Table',
-            message: `Are you sure you want to delete the master data table "${tableName}"? This action cannot be undone and will also delete all associated fields. After deletion, you will be able to create a new master data table.`,
-            onConfirm: async () => {
-                setConfirmDialog({ show: false, title: '', message: '', onConfirm: () => { }, onCancel: () => { } });
-
-                try {
-                    const response = await fetch(
-                        `${API_BASE_URL}/main-boards/boards/master-data-settings/${tableId}`,
-                        {
-                            method: 'DELETE',
-                            headers: {
-                                "X-API-Key": EXCEL_API_KEY
-                            }
-                        }
-                    );
-
-                    if (response.ok) {
-                        fetchTables();
-                        setSelectedTableForFields(null);
-                        setExcelData([]);
-                        showToast('Master data table deleted successfully! You can now create a new one.', 'success');
-                    } else {
-                        const errorData = await response.json();
-                        showToast(`Failed to delete table: ${errorData.detail || 'Unknown error'}`, 'error');
-                    }
-                } catch (error) {
-                    console.error('Error deleting table:', error);
-                    showToast('An error occurred while deleting the table', 'error');
-                }
-            },
-            onCancel: () => {
-                setConfirmDialog({ show: false, title: '', message: '', onConfirm: () => { }, onCancel: () => { } });
-            }
-        });
-    };
+    // ── Toggle expand ─────────────────────────────────────────────────────────
 
     const toggleExpanded = async (tableId: string) => {
-        setExpandedTable(expandedTable === tableId ? null : tableId);
-        if (expandedTable !== tableId) {
-            await handleManageFields(tableId);
+        if (expandedTableId === tableId) {
+            setExpandedTableId(null);
+            setUploadingFor(null);
+            setDatasetFile(null);
         } else {
-            setExcelData([]);
-            setSelectedTableForFields(null);
+            setExpandedTableId(tableId);
+            setUploadingFor(null);
+            setDatasetFile(null);
+            setModifiedRows(new Set());
+            if (!fieldsMap[tableId]) await fetchFields(tableId);
         }
     };
 
-    const handleManageFields = async (tableId: string) => {
-        setSelectedTableForFields(tableId);
-        setLoadingFields(true);
+    // ── Create Modal ──────────────────────────────────────────────────────────
 
+    const openCreateModal = () => { setNewTableName(''); setNewTableDesc(''); setShowCreateModal(true); };
+    const closeCreateModal = () => { setShowCreateModal(false); setNewTableName(''); setNewTableDesc(''); };
+
+    const handleCreate = async () => {
+        if (!boardId || !loggedInUserId) { showToast('Board or user not available', 'error'); return; }
+        if (!newTableName.trim() || !newTableDesc.trim()) { showToast('Table name and description are required', 'error'); return; }
+        setCreating(true);
         try {
-            const response = await fetch(
-                `${API_BASE_URL}/main-boards/boards/master-data-settings/${tableId}/fields`,
-                {
-                    headers: {
-                        "X-API-Key": EXCEL_API_KEY
-                    }
-                }
-            );
-
-            if (response.ok) {
-                const responseData = await response.json();
-                console.log('API Response:', responseData);
-
-                let fieldsData = [];
-
-                if (Array.isArray(responseData)) {
-                    fieldsData = responseData;
-                } else if (responseData && Array.isArray(responseData.fields)) {
-                    fieldsData = responseData.fields;
-                } else if (responseData && Array.isArray(responseData.data)) {
-                    fieldsData = responseData.data;
-                } else if (responseData && Array.isArray(responseData.results)) {
-                    fieldsData = responseData.results;
-                } else {
-                    fieldsData = responseData ? [responseData] : [];
-                }
-
-                const transformedData: ExcelFieldData[] = fieldsData.map((field: any, index: number) => ({
-                    id: index + 1,
-                    fieldName: field.field_name || field.name || '',
-                    fieldDescription: field.field_description || field.description || '',
-                    fieldType: field.field_datatype || field.datatype || field.type || 'char',
-                    fieldLength: field.field_length ? field.field_length.toString() : field.length?.toString() || '',
-                    fieldValue: field.field_value || field.value || field.field_value_display || '',
-                    apiId: field.field_name || field.name,
-                    originalFieldName: field.field_name || field.name // Store original field name
-                }));
-
-                setExcelData(transformedData);
-
-                if (transformedData.length === 0) {
-                    showToast('No fields found for this table', 'warning');
-                }
-            } else {
-                console.error('Failed to fetch fields');
-                showToast('Failed to load fields', 'error');
-                setExcelData([]);
-            }
-        } catch (error) {
-            console.error('Error fetching fields:', error);
-            showToast('Error loading fields', 'error');
-            setExcelData([]);
-        } finally {
-            setLoadingFields(false);
-        }
-    };
-
-    const saveExcelFieldToAPI = async (fieldData: ExcelFieldData): Promise<any> => {
-        if (!selectedTableForFields) {
-            showToast('No table selected for field operations', 'error');
-            return;
-        }
-
-        try {
-            setSavingExcel(true);
-
-            // Prepare request body based on API documentation
-            const requestBody = {
-                new_field_name: fieldData.fieldName,
-                new_field_description: fieldData.fieldDescription,
-                new_field_datatype: fieldData.fieldType,
-                new_field_value: fieldData.fieldValue,
-                new_field_length: parseInt(fieldData.fieldLength) || 0,
-                new_is_required: false
+            const body = {
+                table_name: newTableName.trim(),
+                description: newTableDesc.trim(),
+                selected_currency_code: 'USD',
+                selected_currency_symbol: '$',
+                selected_currency_name: 'US Dollar',
             };
-
-            let response;
-            let result;
-
-            // Check if this is an update (has originalFieldName) or create (new field)
-            if (fieldData.originalFieldName && fieldData.originalFieldName !== '') {
-                // Update existing field using the original field name in the URL
-                console.log('Updating field:', fieldData.originalFieldName, 'with data:', requestBody);
-
-                response = await fetch(
-                    `${API_BASE_URL}/main-boards/boards/master-data-settings/${selectedTableForFields}/fields/${encodeURIComponent(fieldData.originalFieldName)}`,
-                    {
-                        method: 'PUT',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-API-Key': EXCEL_API_KEY,
-                            'Accept': 'application/json'
-                        },
-                        body: JSON.stringify(requestBody)
-                    }
-                );
-
-                if (response.ok) {
-                    result = await response.json();
-                    console.log('Field updated successfully:', result);
-                    showToast('Field updated successfully!', 'success');
-
-                    // Clear the modified state for this row
-                    setModifiedExcelRows(prev => {
-                        const newSet = new Set(prev);
-                        newSet.delete(fieldData.id);
-                        return newSet;
-                    });
-
-                    // Refresh the fields data from API to get the latest values
-                    await handleManageFields(selectedTableForFields);
-                } else {
-                    const errorText = await response.text();
-                    console.error('Update failed:', response.status, errorText);
-                    throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
-                }
-            } else {
-                // Create new field - use POST request
-                const createRequestBody = {
-                    field_name: fieldData.fieldName,
-                    field_description: fieldData.fieldDescription,
-                    field_datatype: fieldData.fieldType,
-                    field_value: fieldData.fieldValue,
-                    field_length: parseInt(fieldData.fieldLength) || 0,
-                    is_required: false
-                };
-
-                console.log('Creating new field with data:', createRequestBody);
-
-                response = await fetch(
-                    `${API_BASE_URL}/main-boards/boards/master-data-settings/${selectedTableForFields}/fields`,
-                    {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-API-Key': EXCEL_API_KEY,
-                            'Accept': 'application/json'
-                        },
-                        body: JSON.stringify(createRequestBody)
-                    }
-                );
-
-                if (response.ok) {
-                    result = await response.json();
-                    console.log('Field created successfully:', result);
-                    showToast('Field created successfully!', 'success');
-
-                    // Refresh the fields data from API to get the latest values including the new field
-                    await handleManageFields(selectedTableForFields);
-                } else {
-                    const errorText = await response.text();
-                    console.error('Create failed:', response.status, errorText);
-                    throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
-                }
-            }
-
-            setSavedExcelRows(prev => new Set([...prev, fieldData.id]));
-
-            return result;
-        } catch (error) {
-            console.error('Error saving excel field:', error);
-            showToast(`Error saving field: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
-            throw error;
-        } finally {
-            setSavingExcel(false);
-        }
-    };
-
-    const deleteExcelFieldFromAPI = async (fieldData: ExcelFieldData): Promise<void> => {
-        if (!selectedTableForFields) {
-            showToast('No table selected for field operations', 'error');
-            return;
-        }
-
-        if (!fieldData.originalFieldName && !fieldData.fieldName) {
-            showToast('Field name is required for deletion', 'error');
-            return;
-        }
-
-        try {
-            const fieldNameToDelete = fieldData.originalFieldName || fieldData.fieldName;
-
-            const response = await fetch(
-                `${API_BASE_URL}/main-boards/boards/master-data-settings/${selectedTableForFields}/fields/${encodeURIComponent(fieldNameToDelete)}`,
-                {
-                    method: 'DELETE',
-                    headers: {
-                        'X-API-Key': EXCEL_API_KEY,
-                        'Accept': 'application/json'
-                    }
-                }
+            const res = await fetch(
+                `${API_BASE_URL}/api/master-data/manual?user_id=${loggedInUserId}`,
+                { method: 'POST', headers: { 'X-API-Key': API_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
             );
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error('Delete failed:', response.status, errorText);
-                throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
-            }
-
-            console.log('Excel field deleted successfully');
-            showToast('Field deleted successfully!', 'success');
-
-            // Remove the field from local state
-            setExcelData(prevData => prevData.filter(row => row.id !== fieldData.id));
-            setSelectedExcelRows(prev => {
-                const newSet = new Set(prev);
-                newSet.delete(fieldData.id);
-                return newSet;
-            });
-            setSavedExcelRows(prev => {
-                const newSet = new Set(prev);
-                newSet.delete(fieldData.id);
-                return newSet;
-            });
-
-        } catch (error) {
-            console.error('Error deleting excel field:', error);
-            showToast(`Error deleting field: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
-            throw error;
-        }
-    };
-
-    const saveAllExcelFields = async (): Promise<void> => {
-        if (!selectedTableForFields) {
-            showToast('No table selected for field operations', 'error');
-            return;
-        }
-
-        try {
-            setSavingExcel(true);
-            const promises = excelData.map(row => saveExcelFieldToAPI(row));
-            await Promise.all(promises);
-            showToast('All fields saved successfully!', 'success');
-
-            // Refresh the fields data from API to get the latest values
-            await handleManageFields(selectedTableForFields);
-        } catch (error) {
-            console.error('Error saving all excel fields:', error);
-        } finally {
-            setSavingExcel(false);
-        }
-    };
-
-    const saveSelectedExcelFields = async (): Promise<void> => {
-        if (!selectedTableForFields) {
-            showToast('No table selected for field operations', 'error');
-            return;
-        }
-
-        try {
-            setSavingExcel(true);
-            const selectedData = excelData.filter(row => selectedExcelRows.has(row.id));
-            const promises = selectedData.map(row => saveExcelFieldToAPI(row));
-            await Promise.all(promises);
-            showToast(`${selectedData.length} fields saved successfully!`, 'success');
-
-            // Refresh the fields data from API to get the latest values
-            await handleManageFields(selectedTableForFields);
-        } catch (error) {
-            console.error('Error saving selected excel fields:', error);
-        } finally {
-            setSavingExcel(false);
-        }
-    };
-
-    useEffect(() => {
-        if (editingExcelCell && excelInputRef.current) {
-            excelInputRef.current.focus();
-            if (excelInputRef.current instanceof HTMLInputElement) {
-                excelInputRef.current.select();
-            }
-        }
-    }, [editingExcelCell]);
-
-    const handleExcelCellClick = (rowId: number, field: keyof ExcelFieldData, currentValue: string): void => {
-        setEditingExcelCell(`${rowId}-${field}`);
-        setEditExcelValue(currentValue || '');
-    };
-
-    const handleExcelCellSave = (rowId: number, field: keyof ExcelFieldData): void => {
-        setExcelData(prevData =>
-            prevData.map(row => {
-                if (row.id === rowId) {
-                    const updatedRow = { ...row, [field]: editExcelValue };
-
-                    // If changing field type to list, initialize list values
-                    if (field === 'fieldType' && editExcelValue === 'list') {
-                        setListValues(prev => ({
-                            ...prev,
-                            [rowId]: prev[rowId] || ['']
-                        }));
-                    }
-
-                    // If changing field type from list, clear list values
-                    if (field === 'fieldType' && row.fieldType === 'list' && editExcelValue !== 'list') {
-                        setListValues(prev => {
-                            const newValues = { ...prev };
-                            delete newValues[rowId];
-                            return newValues;
-                        });
-                        setExpandedListFields(prev => {
-                            const newSet = new Set(prev);
-                            newSet.delete(rowId);
-                            return newSet;
-                        });
-                    }
-
-                    return updatedRow;
-                }
-                return row;
-            })
-        );
-
-        // Mark row as modified when a cell is saved
-        setModifiedExcelRows(prev => new Set([...prev, rowId]));
-
-        setEditingExcelCell(null);
-        setEditExcelValue('');
-    };
-
-    const handleExcelCellCancel = (): void => {
-        setEditingExcelCell(null);
-        setEditExcelValue('');
-    };
-
-    const handleExcelKeyDown = (e: React.KeyboardEvent, rowId: number, field: keyof ExcelFieldData): void => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            handleExcelCellSave(rowId, field);
-        } else if (e.key === 'Escape') {
-            e.preventDefault();
-            handleExcelCellCancel();
-        } else if (e.key === 'Tab') {
-            e.preventDefault();
-            handleExcelCellSave(rowId, field);
-        }
-    };
-
-    const addNewExcelRow = (): void => {
-        const newId = Math.max(...excelData.map(row => row.id), 0) + 1;
-        const newRow: ExcelFieldData = {
-            id: newId,
-            fieldName: '',
-            fieldDescription: '',
-            fieldType: 'char',
-            fieldLength: '',
-            fieldValue: '',
-            originalFieldName: '' // No original field name for new rows
-        };
-        setExcelData([...excelData, newRow]);
-        showToast('New field row added. Don\'t forget to save!', 'success');
-    };
-
-    const deleteSelectedExcelRows = (): void => {
-        setExcelData(excelData.filter(row => !selectedExcelRows.has(row.id)));
-        setSelectedExcelRows(new Set());
-    };
-
-    const toggleExcelRowSelection = (rowId: number): void => {
-        const newSelected = new Set(selectedExcelRows);
-        if (newSelected.has(rowId)) {
-            newSelected.delete(rowId);
-        } else {
-            newSelected.add(rowId);
-        }
-        setSelectedExcelRows(newSelected);
-    };
-
-    // List field management functions
-    const toggleListExpansion = (fieldId: number) => {
-        setExpandedListFields(prev => {
-            const newSet = new Set(prev);
-            if (newSet.has(fieldId)) {
-                newSet.delete(fieldId);
+            if (res.ok) {
+                const created = await res.json();
+                showToast('Master data table created!', 'success');
+                closeCreateModal();
+                await fetchTables();
+                const newId = String(created?.data?.id || created?.id || '');
+                if (newId) { setExpandedTableId(newId); await fetchFields(newId); }
             } else {
-                newSet.add(fieldId);
-                // Initialize list values if not already present
-                if (!listValues[fieldId]) {
-                    // Parse existing comma-separated values or start with empty array
-                    const field = excelData.find(f => f.id === fieldId);
-                    const existingValues = field?.fieldValue ? field.fieldValue.split(',').map(v => v.trim()).filter(v => v) : [];
-                    setListValues(prevValues => ({
-                        ...prevValues,
-                        [fieldId]: existingValues.length > 0 ? existingValues : ['']
-                    }));
-                }
+                const err = await res.json();
+                showToast(`Failed: ${err.detail || 'Unknown error'}`, 'error');
             }
-            return newSet;
+        } catch { showToast('An error occurred', 'error'); }
+        finally { setCreating(false); }
+    };
+
+    // ── Edit Table ────────────────────────────────────────────────────────────
+
+    const startEditTable = (t: TableData) => { setEditingTableId(t.id); setEditTableName(t.table_name); setEditTableDesc(t.description); };
+    const cancelEditTable = () => { setEditingTableId(null); setEditTableName(''); setEditTableDesc(''); };
+
+    const saveEditTable = async (tableId: string) => {
+        if (!editTableName.trim() || !editTableDesc.trim()) { showToast('Both fields required', 'error'); return; }
+        setUpdating(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/master-data/${tableId}`,
+                { method: 'PUT', headers: { 'X-API-Key': API_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ table_name: editTableName, description: editTableDesc }) });
+            if (res.ok) { cancelEditTable(); fetchTables(); showToast('Table updated!', 'success'); }
+            else { const err = await res.json(); showToast(`Failed: ${err.detail || 'Unknown error'}`, 'error'); }
+        } catch { showToast('Error updating', 'error'); }
+        finally { setUpdating(false); }
+    };
+
+    // ── Delete Table ──────────────────────────────────────────────────────────
+
+    const deleteTable = (tableId: string, name: string) => {
+        showConfirm('Delete Table', `Delete "${name}"? All fields and dataset will be removed permanently.`, async () => {
+            try {
+                const res = await fetch(`${API_BASE_URL}/api/master-data/${tableId}`, { method: 'DELETE', headers: { 'X-API-Key': API_KEY } });
+                if (res.ok) {
+                    fetchTables();
+                    if (expandedTableId === tableId) setExpandedTableId(null);
+                    showToast('Table deleted!', 'success');
+                } else { const err = await res.json(); showToast(`Failed: ${err.detail || 'Unknown error'}`, 'error'); }
+            } catch { showToast('Error deleting', 'error'); }
         });
     };
 
-    const addListValue = (fieldId: number) => {
-        setListValues(prev => ({
-            ...prev,
-            [fieldId]: [...(prev[fieldId] || []), '']
-        }));
-    };
+    // ── Upload dataset ────────────────────────────────────────────────────────
 
-    const updateListValue = (fieldId: number, index: number, value: string) => {
-        setListValues(prev => ({
-            ...prev,
-            [fieldId]: prev[fieldId]?.map((item, i) => i === index ? value : item) || []
-        }));
+    const handleUploadDataset = async (tableId: string) => {
+        if (!datasetFile) { showToast('Please select a file', 'error'); return; }
+        if (!loggedInUserId) { showToast('User not found', 'error'); return; }
+        const table = tables.find(t => t.id === tableId);
+        if (!table) return;
 
-        // Mark the field as modified
-        setModifiedExcelRows(prev => new Set([...prev, fieldId]));
-    };
-
-    const removeListValue = (fieldId: number, index: number) => {
-        setListValues(prev => ({
-            ...prev,
-            [fieldId]: prev[fieldId]?.filter((_, i) => i !== index) || []
-        }));
-
-        // Mark the field as modified
-        setModifiedExcelRows(prev => new Set([...prev, fieldId]));
-    };
-
-    const saveListValues = (fieldId: number) => {
-        const values = listValues[fieldId] || [];
-        const validValues = values.filter(v => v.trim() !== '');
-
-        // Update the field value with comma-separated list
-        setExcelData(prevData =>
-            prevData.map(row =>
-                row.id === fieldId ? { ...row, fieldValue: validValues.join(', ') } : row
-            )
-        );
-
-        // Mark as modified
-        setModifiedExcelRows(prev => new Set([...prev, fieldId]));
-
-        showToast('List values saved locally. Don\'t forget to save the field!', 'success');
-    };
-
-    // Function to render list items in individual rows
-    const renderListItems = (field: ExcelFieldData) => {
-        if (field.fieldType !== 'list' || !field.fieldValue) return null;
-
-        const listItems = field.fieldValue.split(',').map(item => item.trim()).filter(item => item);
-        if (listItems.length === 0) return null;
-
-        return listItems.map((item, index) => (
-            <tr key={`${field.id}-list-${index}`} className="bg-blue-25 border-l-4 border-blue-400">
-                <td className="w-8 px-2 py-1 border-r border-gray-100">
-                    <div className="flex items-center justify-center">
-                        <span className="text-xs text-blue-600">•</span>
-                    </div>
-                </td>
-                <td className="px-1 py-1 border-r border-gray-100 min-w-[150px]">
-                    <div className="px-2 py-1 text-sm text-gray-600 italic">
-                        ↳ {field.fieldName} item
-                    </div>
-                </td>
-                <td className="px-1 py-1 border-r border-gray-100 min-w-[200px]">
-                    <div className="px-2 py-1 text-sm text-gray-600">
-                        List item {index + 1}
-                    </div>
-                </td>
-                <td className="px-1 py-1 border-r border-gray-100 min-w-[100px]">
-                    <div className="px-2 py-1 text-sm text-blue-600 font-medium">
-                        list-item
-                    </div>
-                </td>
-                <td className="px-1 py-1 border-r border-gray-100 min-w-[80px]">
-                    <div className="px-2 py-1 text-sm text-gray-600">
-                        {item.length}
-                    </div>
-                </td>
-                <td className="px-1 py-1 border-r border-gray-100 min-w-[150px]">
-                    <div className="px-2 py-1 text-sm font-medium text-gray-900 bg-blue-50 rounded">
-                        {item}
-                    </div>
-                </td>
-                <td className="px-2 py-1 text-center">
-                    <div className="flex items-center justify-center space-x-1">
-                        <span className="text-xs text-gray-400">list item</span>
-                    </div>
-                </td>
-            </tr>
-        ));
-    };
-
-    const selectAllExcelRows = (): void => {
-        if (selectedExcelRows.size === excelData.length) {
-            setSelectedExcelRows(new Set());
-        } else {
-            setSelectedExcelRows(new Set(excelData.map(row => row.id)));
-        }
-    };
-
-    const renderExcelCell = (row: ExcelFieldData, field: keyof ExcelFieldData, label: string): React.ReactElement => {
-        const cellKey = `${row.id}-${field}`;
-        const isEditing = editingExcelCell === cellKey;
-        const value = row[field] as string;
-
-        // Special handling for field value when type is list
-        if (field === 'fieldValue' && row.fieldType === 'list') {
-            const listItems = value ? value.split(',').map(item => item.trim()).filter(item => item) : [];
-
-            return (
-                <div className="w-full px-2 py-2 min-h-[36px] border border-transparent hover:border-blue-200 rounded transition-colors duration-150">
-                    <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs text-gray-500">List values:</span>
-                        <button
-                            onClick={() => toggleListExpansion(row.id)}
-                            className="text-blue-600 hover:text-blue-800 p-1 rounded"
-                            title="Manage list values"
-                        >
-                            <Plus className="h-3 w-3" />
-                        </button>
-                    </div>
-
-                    {/* Display list items as visual tags/boxes */}
-                    <div className="flex flex-col gap-1">
-                        {listItems.length > 0 ? (
-                            listItems.map((item, index) => (
-                                <div
-                                    key={index}
-                                    className="px-2 py-1 bg-blue-100 border border-blue-300 rounded text-sm font-medium text-blue-800"
-                                    style={{
-                                        border: '1px solid #3B82F6',
-                                        borderRadius: '4px',
-                                        backgroundColor: '#DBEAFE',
-                                        padding: '4px 8px',
-                                        fontSize: '12px',
-                                        fontWeight: '500',
-                                        marginBottom: '4px' // Add space between items
-                                    }}
-                                >
-                                    {item}
-                                </div>
-                            ))
-                        ) : (
-                            <span className="text-gray-400 text-sm">Click + to add list items</span>
-                        )}
-                    </div>
-
-                    {/* Expanded list management */}
-
-                    {/* Expanded list management */}
-                    {expandedListFields.has(row.id) && (
-                        <div className="mt-3 p-3 bg-gray-50 border rounded">
-                            <div className="space-y-2 max-h-32 overflow-y-auto">
-                                {(listValues[row.id] || ['']).map((listValue, index) => (
-                                    <div key={index} className="flex items-center space-x-2">
-                                        <input
-                                            type="text"
-                                            value={listValue}
-                                            onChange={(e) => updateListValue(row.id, index, e.target.value)}
-                                            className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm"
-                                            placeholder={`List item ${index + 1}`}
-                                        />
-                                        <button
-                                            onClick={() => removeListValue(row.id, index)}
-                                            className="text-red-600 hover:text-red-800 p-1"
-                                            title="Remove item"
-                                        >
-                                            <X className="h-3 w-3" />
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                            <div className="flex justify-between items-center mt-3 pt-2 border-t">
-                                <button
-                                    onClick={() => addListValue(row.id)}
-                                    className="text-blue-600 hover:text-blue-800 flex items-center text-sm"
-                                >
-                                    <Plus className="h-3 w-3 mr-1" />
-                                    Add Item
-                                </button>
-                                <div className="space-x-2">
-                                    <button
-                                        onClick={() => saveListValues(row.id)}
-                                        className="px-2 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700"
-                                    >
-                                        Save List
-                                    </button>
-                                    <button
-                                        onClick={() => toggleListExpansion(row.id)}
-                                        className="px-2 py-1 bg-gray-600 text-white rounded text-xs hover:bg-gray-700"
-                                    >
-                                        Close
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                    {/* jjj */}
-                </div>
-            );
-        }
-
-        if (isEditing) {
-            if (field === 'fieldType') {
-                return (
-                    <select
-                        ref={excelInputRef as React.RefObject<HTMLSelectElement>}
-                        value={editExcelValue}
-                        onChange={(e) => setEditExcelValue(e.target.value)}
-                        onBlur={() => handleExcelCellSave(row.id, field)}
-                        onKeyDown={(e) => handleExcelKeyDown(e, row.id, field)}
-                        className="w-full px-2 py-1 border-2 border-blue-500 rounded focus:outline-none focus:border-blue-600 bg-white"
-                    >
-                        {excelFieldTypes.map(type => (
-                            <option key={type} value={type}>{type}</option>
-                        ))}
-                    </select>
-                );
+        setUploadingDataset(true);
+        try {
+            const delRes = await fetch(`${API_BASE_URL}/api/master-data/${tableId}`, { method: 'DELETE', headers: { 'X-API-Key': API_KEY } });
+            if (!delRes.ok) {
+                const delErr = await delRes.json().catch(() => ({}));
+                showToast(`Failed to remove existing table: ${typeof delErr.detail === 'string' ? delErr.detail : 'Unknown error'}`, 'error');
+                return;
             }
+            await new Promise(r => setTimeout(r, 1500));
 
+            const fd = new FormData();
+            fd.append('file', datasetFile);
+            fd.append('metadata', JSON.stringify({
+                table_name: table.table_name,
+                description: table.description,
+                selected_currency_code: 'USD',
+                selected_currency_symbol: '$',
+                selected_currency_name: 'US Dollar',
+            }));
+
+            const res = await fetch(`${API_BASE_URL}/api/master-data/upload?user_id=${loggedInUserId}`,
+                { method: 'POST', headers: { 'X-API-Key': API_KEY }, body: fd });
+
+            if (res.ok) {
+                const newData = await res.json();
+                showToast('Dataset uploaded successfully!', 'success');
+                setDatasetFile(null);
+                setUploadingFor(null);
+                const newId = String(newData?.data?.id || tableId);
+                await fetchTables();
+                setExpandedTableId(newId);
+                setFieldsMap(p => { const n = { ...p }; delete n[tableId]; return n; });
+                await fetchFields(newId);
+            } else {
+                const err = await res.json().catch(() => ({}));
+                showToast(`Failed: ${typeof err.detail === 'string' ? err.detail : err.detail?.[0]?.msg || 'Unknown error'}`, 'error');
+            }
+        } catch (e) {
+            console.error('Upload exception:', e);
+            showToast('Error uploading dataset', 'error');
+        } finally { setUploadingDataset(false); }
+    };
+
+    // ── Field CRUD ────────────────────────────────────────────────────────────
+
+    const addFieldRow = (tableId: string) => {
+        const existing = fieldsMap[tableId] || [];
+        const newId = Math.max(...existing.map(r => r.id), 0) + 1;
+        setFieldsMap(p => ({ ...p, [tableId]: [...existing, { id: newId, fieldName: '', fieldDescription: '', fieldType: 'char', fieldLength: '', fieldValue: '', originalFieldName: '' }] }));
+    };
+
+    const saveField = async (tableId: string, field: FieldData) => {
+        if (!field.fieldName.trim()) { showToast('Field name is required', 'error'); return; }
+        setSavingField(true);
+        try {
+            if (field.originalFieldName && field.originalFieldName !== '') {
+                const body = {
+                    new_field_name: field.fieldName,
+                    new_field_description: field.fieldDescription,
+                    new_field_datatype: field.fieldType,
+                    new_field_value: field.fieldValue,
+                    new_field_length: parseInt(field.fieldLength) || 0,
+                    new_is_required: false,
+                };
+                const res = await fetch(
+                    `${API_BASE_URL}/api/master-data/${tableId}/fields/${encodeURIComponent(field.originalFieldName)}`,
+                    { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY }, body: JSON.stringify(body) }
+                );
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                showToast('Field updated!', 'success');
+            } else {
+                const body = {
+                    fields: [{
+                        field_name: field.fieldName,
+                        field_description: field.fieldDescription,
+                        field_datatype: field.fieldType,
+                        field_value: field.fieldValue || null,
+                        field_length: parseInt(field.fieldLength) || null,
+                        is_required: false,
+                    }]
+                };
+                const res = await fetch(
+                    `${API_BASE_URL}/api/master-data/${tableId}/fields`,
+                    { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY }, body: JSON.stringify(body) }
+                );
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(typeof err.detail === 'string' ? err.detail : err.detail?.[0]?.msg || `HTTP ${res.status}`);
+                }
+                showToast('Field created!', 'success');
+            }
+            setModifiedRows(p => { const s = new Set(p); s.delete(field.id); return s; });
+            await fetchFields(tableId);
+        } catch (err) { showToast(`Error: ${err instanceof Error ? err.message : 'Unknown'}`, 'error'); }
+        finally { setSavingField(false); }
+    };
+
+    const deleteField = (tableId: string, field: FieldData) => {
+        showConfirm('Delete Field', `Delete field "${field.fieldName || 'Unnamed'}"?`, async () => {
+            if (!field.originalFieldName) {
+                setFieldsMap(p => ({ ...p, [tableId]: (p[tableId] || []).filter(r => r.id !== field.id) }));
+                showToast('Row removed', 'success'); return;
+            }
+            try {
+                const res = await fetch(`${API_BASE_URL}/api/master-data/${tableId}/fields/${encodeURIComponent(field.originalFieldName)}`,
+                    { method: 'DELETE', headers: { 'X-API-Key': API_KEY } });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                showToast('Field deleted!', 'success');
+                await fetchFields(tableId);
+            } catch (err) { showToast(`Error: ${err instanceof Error ? err.message : 'Unknown'}`, 'error'); }
+        });
+    };
+
+    // ── Cell editing ──────────────────────────────────────────────────────────
+
+    const handleCellClick = (rowId: number, field: string, value: string) => {
+        setEditingCell(`${rowId}-${field}`);
+        setEditCellValue(value || '');
+    };
+
+    const handleCellSave = (tableId: string, rowId: number, field: string) => {
+        setFieldsMap(p => ({ ...p, [tableId]: (p[tableId] || []).map(row => row.id === rowId ? { ...row, [field]: editCellValue } : row) }));
+        setModifiedRows(p => new Set([...p, rowId]));
+        setEditingCell(null);
+        setEditCellValue('');
+    };
+
+    const handleCellKeyDown = (e: React.KeyboardEvent, tableId: string, rowId: number, field: string) => {
+        if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); handleCellSave(tableId, rowId, field); }
+        else if (e.key === 'Escape') { setEditingCell(null); setEditCellValue(''); }
+    };
+
+    const renderCell = (tableId: string, row: FieldData, field: keyof FieldData): React.ReactElement => {
+        const cellKey = `${row.id}-${field}`;
+        const isEditing = editingCell === cellKey;
+        const value = row[field] as string;
+        if (isEditing) {
+            if (field === 'fieldType') return (
+                <select
+                    ref={cellInputRef as React.RefObject<HTMLSelectElement>}
+                    value={editCellValue}
+                    onChange={e => setEditCellValue(e.target.value)}
+                    onBlur={() => handleCellSave(tableId, row.id, field)}
+                    onKeyDown={e => handleCellKeyDown(e, tableId, row.id, field)}
+                    className="w-full px-1 py-0.5 border-2 border-blue-500 rounded text-[11px] focus:outline-none bg-white"
+                >
+                    {FIELD_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+            );
             return (
-                <div className="relative">
+                <div className="relative flex items-center">
                     <input
-                        ref={excelInputRef as React.RefObject<HTMLInputElement>}
+                        ref={cellInputRef as React.RefObject<HTMLInputElement>}
                         type="text"
-                        value={editExcelValue}
-                        onChange={(e) => setEditExcelValue(e.target.value)}
-                        onBlur={() => handleExcelCellSave(row.id, field)}
-                        onKeyDown={(e) => handleExcelKeyDown(e, row.id, field)}
-                        className="w-full px-2 py-1 border-2 border-blue-500 rounded focus:outline-none focus:border-blue-600"
+                        value={editCellValue}
+                        onChange={e => setEditCellValue(e.target.value)}
+                        onBlur={() => handleCellSave(tableId, row.id, field)}
+                        onKeyDown={e => handleCellKeyDown(e, tableId, row.id, field)}
+                        className="w-full px-1 py-0.5 border-2 border-blue-500 rounded text-[11px] focus:outline-none pr-9"
                     />
-                    <div className="absolute right-1 top-1 flex space-x-1">
-                        <button
-                            onClick={() => handleExcelCellSave(row.id, field)}
-                            className="text-green-600 hover:text-green-800"
-                        >
-                            <Check className="h-3 w-3" />
-                        </button>
-                        <button
-                            onClick={handleExcelCellCancel}
-                            className="text-red-600 hover:text-red-800"
-                        >
-                            <X className="h-3 w-3" />
-                        </button>
+                    <div className="absolute right-0.5 flex gap-0.5">
+                        <button onClick={() => handleCellSave(tableId, row.id, field)} className="text-green-600 hover:text-green-800"><Check className="h-3 w-3" /></button>
+                        <button onClick={() => { setEditingCell(null); setEditCellValue(''); }} className="text-red-500 hover:text-red-700"><X className="h-3 w-3" /></button>
                     </div>
                 </div>
             );
         }
-
         return (
             <div
-                onClick={() => handleExcelCellClick(row.id, field, value)}
-                className="w-full px-2 py-2 min-h-[36px] cursor-text hover:bg-blue-50 border border-transparent hover:border-blue-200 rounded transition-colors duration-150 flex items-center"
+                onClick={() => handleCellClick(row.id, field, value)}
+                className="w-full px-1 py-1 min-h-[26px] cursor-text hover:bg-blue-50 border border-transparent hover:border-blue-200 rounded transition-colors"
             >
-                <span className={`${!value ? 'text-gray-400' : 'text-gray-900'}`}>
-                    {value || 'Click to edit...'}
+                <span
+                    className={`text-[11px] block w-full overflow-hidden text-ellipsis whitespace-nowrap ${value ? 'text-gray-800' : 'text-gray-300 italic'}`}
+                    title={value || ''}
+                >
+                    {value || 'Click to edit…'}
                 </span>
             </div>
         );
     };
 
-    function setCurrentPage(arg0: number) {
-        throw new Error('Function not implemented.');
-    }
+    // ── Dataset drag & drop ───────────────────────────────────────────────────
+
+    const handleDatasetDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDraggingDataset(true); };
+    const handleDatasetDragLeave = () => setIsDraggingDataset(false);
+    const handleDatasetDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        setIsDraggingDataset(false);
+        const file = e.dataTransfer.files?.[0];
+        if (file) setDatasetFile(file);
+    };
+
+    // ── Render ────────────────────────────────────────────────────────────────
 
     return (
-        <div className="p-6 bg-gray-50 min-h-screen">
-            <div className="max-w-7xl mx-auto">
-                <div className="mb-6">
-                    {/* <div className="flex justify-between items-center"> */}
-                        {/* <h1 className="text-2xl font-semibold text-gray-900">Master Data Settings</h1> */}
-                        <div className="flex justify-end space-x-2">  {/* Added justify-end */}
-                            <button
-                                onClick={() => setShowTableModal(true)}
-                                disabled={tables.length > 0 || !boardId}
-                                className={`px-4 py-2 rounded-lg flex items-center space-x-2 shadow-sm transition-colors duration-150 ${tables.length > 0 || !boardId
-                                        ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
-                                        : 'bg-blue-600 text-white hover:bg-blue-700'
-                                    }`}
-                                title={
-                                    !boardId
-                                        ? "Please select a board first"
-                                        : tables.length > 0
-                                            ? "Only one master data table is allowed per board"
-                                            : "Create master data table"
-                                }
-                            >
-                                <Plus className="h-4 w-4" />
-                                <span>
-                                    {!boardId
-                                        ? 'Select Board First'
-                                        : tables.length > 0
-                                            ? 'Master Data Created'
-                                            : 'Create Master Data'
-                                    }
-                                </span>
-                            </button>
-                        </div>
-                    {/* </div> */}
+        /* FIX: removed min-h-full to avoid layout stretching; use h-full only if parent is flex */
+        <div className="p-3 bg-gray-50">
+            <div className="max-w-full mx-auto space-y-3">
+
+                {/* ── Top bar ── */}
+                <div className="flex justify-end">
+                    <button
+                        onClick={openCreateModal}
+                        disabled={!boardId || !loggedInUserId}
+                        className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm text-xs font-medium transition-colors
+                            ${!boardId || !loggedInUserId
+                                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+                    >
+                        {!boardId ? 'Select Board First' : '+ Create Master Data'}
+                    </button>
                 </div>
 
-                {tablesLoading && (
-                    <div className="flex justify-center items-center h-64">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                {/* ── Tables list ── */}
+                {tablesLoading ? (
+                    <div className="flex justify-center items-center py-12">
+                        <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
                     </div>
-                )}
-
-                {!tablesLoading && (
-                    <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden mb-6">
-                        <table className="min-w-full">
-                            <thead className="bg-gray-50">
-                                <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-black-500 uppercase tracking-wider">
-                                        Table Name
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-black-500 uppercase tracking-wider">
-                                        Table Description
-                                    </th>
-                                    <th className="px-6 py-3 text-center text-xs font-medium text-black-500 uppercase tracking-wider">
-                                        Actions
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody className="bg-white divide-y divide-gray-200">
-                                {tables.length === 0 ? (
+                ) : (
+                    /* FIX: overflow-hidden (was overflow-visible) so expanded rows don't break layout */
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                        {/* FIX: overflow-x-auto on a wrapping div so horizontal scroll works cleanly */}
+                        <div className="overflow-x-auto">
+                            <table className="w-full" style={{ minWidth: '560px', tableLayout: 'fixed' }}>
+                                <colgroup>
+                                    {/* FIX: tighter column ratios so 3 cols fit at 100% zoom */}
+                                    <col style={{ width: '30%' }} />
+                                    <col style={{ width: '52%' }} />
+                                    <col style={{ width: '18%' }} />
+                                </colgroup>
+                                <thead className="bg-gray-50 border-b border-gray-200">
                                     <tr>
-                                        <td colSpan={3} className="px-6 py-8 text-center text-gray-500">
-                                            {!boardId
-                                                ? 'Please select a board to manage master data tables.'
-                                                : 'No master data table found for this board. Click "Create Master Data" to create your table.'
-                                            }
-                                        </td>
+                                        <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-600 uppercase tracking-wider">Table Name</th>
+                                        <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-600 uppercase tracking-wider">Table Description</th>
+                                        <th className="px-3 py-2 text-center text-[10px] font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
                                     </tr>
-                                ) : (
-                                    tables.map((table) => (
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {tables.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={3} className="px-4 py-8 text-center text-xs text-gray-400">
+                                                {!boardId
+                                                    ? 'Please select a board to manage master data tables.'
+                                                    : 'No master data table found. Click "+ Create Master Data" to create one.'}
+                                            </td>
+                                        </tr>
+                                    ) : tables.map(table => (
                                         <React.Fragment key={table.id}>
-                                            <tr className="hover:bg-gray-50">
-                                                <td className="px-6 py-4 whitespace-nowrap">
-                                                    <div className="text-sm font-medium text-gray-900">
-                                                        {table.table_name}
-                                                    </div>
+                                            {/* ── Table row ── */}
+                                            <tr className="hover:bg-gray-50 transition-colors">
+                                                <td className="px-3 py-2">
+                                                    {editingTableId === table.id
+                                                        ? <input
+                                                            type="text"
+                                                            value={editTableName}
+                                                            onChange={e => setEditTableName(e.target.value)}
+                                                            className="w-full px-2 py-1 border border-blue-400 rounded text-xs focus:outline-none focus:ring-2 focus:ring-blue-300"
+                                                          />
+                                                        : <span className="text-xs font-semibold text-gray-800 block truncate" title={table.table_name}>{table.table_name}</span>
+                                                    }
                                                 </td>
-                                                <td className="px-6 py-4">
-                                                    <div className="text-sm text-gray-900">
-                                                        {table.description}
-                                                    </div>
+                                                <td className="px-3 py-2">
+                                                    {editingTableId === table.id
+                                                        ? <input
+                                                            type="text"
+                                                            value={editTableDesc}
+                                                            onChange={e => setEditTableDesc(e.target.value)}
+                                                            className="w-full px-2 py-1 border border-blue-400 rounded text-xs focus:outline-none focus:ring-2 focus:ring-blue-300"
+                                                          />
+                                                        : <span className="text-xs text-gray-600 block truncate" title={table.description}>{table.description}</span>
+                                                    }
                                                 </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-center">
-                                                    <div className="flex items-center justify-center space-x-2">
-                                                        {/* <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                handleEditTableStart(table);
-                                                            }}
-                                                            className="text-blue-600 hover:text-blue-800 p-1"
-                                                            title="Edit table"
-                                                        >
-                                                            <Edit className="h-4 w-4" />
-                                                        </button> */}
-                                                        {/* <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                handleDeleteTable(table.id, table.table_name);
-                                                            }}
-                                                            className="text-red-600 hover:text-red-800 p-1"
-                                                            title="Delete table"
-                                                        >
-                                                            <Trash2 className="h-4 w-4" />
-                                                        </button> */}
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                toggleExpanded(table.id);
-                                                            }}
-                                                            className="text-green-600 hover:text-green-800 p-1"
-                                                            title="Manage fields"
-                                                        >
-                                                            {expandedTable === table.id ? (
-                                                                <ChevronUp className="h-4 w-4" />
-                                                            ) : (
-                                                                <ChevronDown className="h-4 w-4" />
-                                                            )}
-                                                        </button>
+                                                <td className="px-3 py-2">
+                                                    <div className="flex items-center justify-center gap-0.5">
+                                                        {editingTableId === table.id ? (
+                                                            <>
+                                                                <button
+                                                                    onClick={() => saveEditTable(table.id)}
+                                                                    disabled={updating}
+                                                                    className="text-green-600 hover:text-green-800 p-1 rounded hover:bg-green-50 disabled:opacity-50"
+                                                                    title="Save"
+                                                                >
+                                                                    {updating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                                                                </button>
+                                                                <button onClick={cancelEditTable} className="text-gray-500 hover:text-gray-700 p-1 rounded hover:bg-gray-100" title="Cancel">
+                                                                    <X className="h-3.5 w-3.5" />
+                                                                </button>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <button onClick={() => startEditTable(table)} className="text-blue-500 hover:text-blue-700 p-1 rounded hover:bg-blue-50" title="Edit table">
+                                                                    <Edit2 className="h-3.5 w-3.5" />
+                                                                </button>
+                                                                <button onClick={() => deleteTable(table.id, table.table_name)} className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50" title="Delete table">
+                                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                                </button>
+                                                                <button onClick={() => toggleExpanded(table.id)} className="text-gray-500 hover:text-gray-700 p-1 rounded hover:bg-gray-100" title="View fields">
+                                                                    {expandedTableId === table.id ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                                                                </button>
+                                                            </>
+                                                        )}
                                                     </div>
                                                 </td>
                                             </tr>
 
-                                            {/* {!tablesLoading && ( */}
-                                                {/* // <div className="mb-4"> */}
-                                                    {/* <div className="relative">
-                                                        <input
-                                                            type="text"
-                                                            placeholder="Search tables..."
-                                                            className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                            value={searchTerm}
-                                                            onChange={(e) => {
-                                                                setSearchTerm(e.target.value);
-                                                                setCurrentPage(1); // Reset to first page when searching
-                                                            }}
-                                                        />
-                                                        {searchTerm && (
-                                                            <button
-                                                                onClick={() => setSearchTerm('')}
-                                                                className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
-                                                            >
-                                                                <X className="h-4 w-4" />
-                                                            </button>
-                                                        )}
-                                                    </div> */}
-                                                {/* </div> */}
-                                            {/* // )} */}
+                                            {/* ── Expanded panel ── */}
+                                            {expandedTableId === table.id && (
+                                                <tr>
+                                                    {/* FIX: colSpan=3, no p-0 side-effect; bg-gray-50 matches original */}
+                                                    <td colSpan={3} className="bg-gray-50 border-t border-gray-200 p-0">
+                                                        {/* FIX: single overflow-x-auto wrapper; inner div only sets min-width */}
+                                                        <div className="overflow-x-auto w-full">
+                                                            <div style={{ minWidth: '700px' }}>
 
-                                            {expandedTable === table.id && (
-                                                <tr className="bg-gray-50">
-                                                    <td colSpan={3} className="px-6 py-4">
-                                                        {editingTableId === table.id ? (
-                                                            <div className="space-y-4">
-                                                                <h4 className="text-lg font-medium text-gray-900">Edit Table</h4>
-                                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                                    <div>
-                                                                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                                                                            Table Name
-                                                                        </label>
-                                                                        <input
-                                                                            type="text"
-                                                                            value={editTableData.table_name}
-                                                                            onChange={(e) => setEditTableData({
-                                                                                ...editTableData,
-                                                                                table_name: e.target.value
-                                                                            })}
-                                                                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                                                            placeholder="Enter master data table name"
-                                                                        />
-                                                                    </div>
-                                                                    <div>
-                                                                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                                                                            Description
-                                                                        </label>
-                                                                        <input
-                                                                            type="text"
-                                                                            value={editTableData.description}
-                                                                            onChange={(e) => setEditTableData({
-                                                                                ...editTableData,
-                                                                                description: e.target.value
-                                                                            })}
-                                                                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                                                            placeholder="Enter description"
-                                                                        />
-                                                                    </div>
-                                                                </div>
-                                                                <div className="flex space-x-4">
-                                                                    <button
-                                                                        onClick={() => handleEditTableSave(table.id)}
-                                                                        disabled={updating}
-                                                                        className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center space-x-2 disabled:opacity-50"
-                                                                    >
-                                                                        <Save className="h-4 w-4" />
-                                                                        <span>{updating ? 'Saving...' : 'Save'}</span>
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={handleEditTableCancel}
-                                                                        disabled={updating}
-                                                                        className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 flex items-center space-x-2 disabled:opacity-50"
-                                                                    >
-                                                                        <X className="h-4 w-4" />
-                                                                        <span>Cancel</span>
-                                                                    </button>
-                                                                </div>
-                                                            </div>
-                                                        ) : (
-                                                            <div className="space-y-4">
-                                                                <div className="mb-4 flex justify-between items-center">
-                                                                    <h4 className="text-lg font-medium text-gray-900">Manage Fields</h4>
-                                                                    <div className="flex space-x-2">
-                                                                        <button
-                                                                            onClick={addNewExcelRow}
-                                                                            disabled={savingExcel}
-                                                                            className="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center space-x-1 text-sm disabled:opacity-50"
-                                                                        >
-                                                                            <Plus className="h-3 w-3" />
-                                                                            <span>Add Field</span>
-                                                                        </button>
-
-                                                                         {/* <button
-                                                                            onClick={addNewmonetoryRow}
-                                                                            disabled={savingmonetory}
-                                                                            className="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center space-x-1 text-sm disabled:opacity-50"
-                                                                        >
-                                                                            <Plus className="h-3 w-3" />
-                                                                            <span>Add Monetory Field</span>
-                                                                        </button> */}
-
-                                                                        {selectedExcelRows.size > 0 && (
-                                                                            <div className="flex space-x-3">
-                                                                                <button
-                                                                                    onClick={saveSelectedExcelFields}
-                                                                                    disabled={savingExcel}
-                                                                                    className="px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center space-x-1 text-sm disabled:opacity-50"
-                                                                                >
-                                                                                    {savingExcel ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-                                                                                    <span>Save ({selectedExcelRows.size})</span>
-                                                                                </button>
-                                                                                <button
-                                                                                    onClick={deleteSelectedExcelRows}
-                                                                                    disabled={savingExcel}
-                                                                                    className="px-3 py-1 bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center space-x-1 text-sm disabled:opacity-50"
-                                                                                >
-                                                                                    <Trash2 className="h-3 w-3" />
-                                                                                    <span>Delete ({selectedExcelRows.size})</span>
-                                                                                </button>
+                                                                {/* File info banner */}
+                                                                {table.has_uploaded_file && (
+                                                                    <div className="mx-3 mt-3 mb-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg flex flex-wrap items-center gap-3">
+                                                                        <div className="flex items-center gap-2 flex-shrink-0">
+                                                                            <div className="w-7 h-7 bg-green-100 rounded-md flex items-center justify-center">
+                                                                                <Upload className="h-3.5 w-3.5 text-green-600" />
                                                                             </div>
-                                                                        )}
-
-                                                                        <button
-                                                                            onClick={saveAllExcelFields}
-                                                                            disabled={savingExcel}
-                                                                            className="px-3 py-1 bg-purple-600 text-white rounded-md hover:bg-purple-700 flex items-center space-x-1 text-sm disabled:opacity-50"
-                                                                        >
-                                                                            {savingExcel ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-                                                                            <span>Save All</span>
-                                                                        </button>
-                                                                    </div>
-                                                                </div>
-
-                                                                {loadingFields ? (
-                                                                    <div className="flex justify-center items-center h-32">
-                                                                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                                                                        <span className="ml-2 text-gray-600">Loading fields...</span>
-                                                                    </div>
-                                                                ) : (
-                                                                    <div className="border border-gray-200 rounded-lg overflow-hidden">
-                                                                        <table className="min-w-full">
-                                                                            <thead>
-                                                                                <tr className="bg-gray-100 border-b border-gray-200">
-                                                                                    <th className="w-8 px-2 py-2 text-left">
-                                                                                        <input
-                                                                                            type="checkbox"
-                                                                                            checked={selectedExcelRows.size === excelData.length && excelData.length > 0}
-                                                                                            onChange={selectAllExcelRows}
-                                                                                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                                                                        />
-                                                                                    </th>
-                                                                                    <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-r border-gray-200">
-                                                                                        Field Name
-                                                                                    </th>
-                                                                                    <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-r border-gray-200">
-                                                                                        Description
-                                                                                    </th>
-                                                                                    <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-r border-gray-200">
-                                                                                        Type
-                                                                                    </th>
-                                                                                    <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-r border-gray-200">
-                                                                                        Length
-                                                                                    </th>
-                                                                                    <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-r border-gray-200">
-                                                                                        Value
-                                                                                    </th>
-                                                                                    <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700">
-                                                                                        Actions
-                                                                                    </th>
-                                                                                </tr>
-                                                                            </thead>
-                                                                            <tbody>
-                                                                                {currentFields.map((row, index) => (
-                                                                                    <tr
-                                                                                        key={row.id}
-                                                                                        className={`border-b border-gray-100 hover:bg-gray-50 transition-colors duration-150 ${selectedExcelRows.has(row.id) ? 'bg-blue-50' : ''
-                                                                                            } ${savedExcelRows.has(row.id) ? 'bg-green-50 border-green-200' : ''} ${modifiedExcelRows.has(row.id) ? 'bg-orange-50 border-orange-200' : ''
-                                                                                            }`}
-                                                                                    >
-                                                                                        <td className="w-8 px-2 py-1 border-r border-gray-100">
-                                                                                            <div className="flex items-center space-x-1">
-                                                                                                <input
-                                                                                                    type="checkbox"
-                                                                                                    checked={selectedExcelRows.has(row.id)}
-                                                                                                    onChange={() => toggleExcelRowSelection(row.id)}
-                                                                                                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                                                                                />
-                                                                                                {savedExcelRows.has(row.id) && (
-                                                                                                    <Check className="h-2 w-2 text-green-600" />
-                                                                                                )}
-                                                                                            </div>
-                                                                                        </td>
-                                                                                        <td className="px-1 py-1 border-r border-gray-100 min-w-[150px]">
-                                                                                            {renderExcelCell(row, 'fieldName', 'Field Name')}
-                                                                                        </td>
-                                                                                        <td className="px-1 py-1 border-r border-gray-100 min-w-[200px]">
-                                                                                            {renderExcelCell(row, 'fieldDescription', 'Field Description')}
-                                                                                        </td>
-                                                                                        <td className="px-1 py-1 border-r border-gray-100 min-w-[100px]">
-                                                                                            {renderExcelCell(row, 'fieldType', 'Field Type')}
-                                                                                        </td>
-                                                                                        <td className="px-1 py-1 border-r border-gray-100 min-w-[80px]">
-                                                                                            {renderExcelCell(row, 'fieldLength', 'Field Length')}
-                                                                                        </td>
-                                                                                        <td className="px-1 py-1 border-r border-gray-100 min-w-[150px]">
-                                                                                            {renderExcelCell(row, 'fieldValue', 'Field Value')}
-                                                                                        </td>
-                                                                                        <td className="px-2 py-1 text-center">
-                                                                                            <div className="flex items-center justify-center space-x-1">
-                                                                                                <button
-                                                                                                    onClick={async () => {
-                                                                                                        try {
-                                                                                                            await saveExcelFieldToAPI(row);
-                                                                                                        } catch (error) {
-                                                                                                            // Error is already handled in saveExcelFieldToAPI
-                                                                                                        }
-                                                                                                    }}
-                                                                                                    disabled={savingExcel}
-                                                                                                    className={`${modifiedExcelRows.has(row.id)
-                                                                                                            ? 'text-orange-600 hover:text-orange-800'
-                                                                                                            : 'text-green-600 hover:text-green-800'
-                                                                                                        } disabled:opacity-50`}
-                                                                                                    title={modifiedExcelRows.has(row.id) ? 'Update this field' : 'Save this field'}
-                                                                                                >
-                                                                                                    {modifiedExcelRows.has(row.id) ? (
-                                                                                                        <Edit className="h-3 w-3" />
-                                                                                                    ) : (
-                                                                                                        <Save className="h-3 w-3" />
-                                                                                                    )}
-                                                                                                </button>
-                                                                                                <button
-                                                                                                    onClick={() => {
-                                                                                                        showConfirmDialog(
-                                                                                                            'Delete Field',
-                                                                                                            `Are you sure you want to delete the field "${row.fieldName || 'Unnamed'}"?`,
-                                                                                                            async () => {
-                                                                                                                try {
-                                                                                                                    if (row.originalFieldName) {
-                                                                                                                        await deleteExcelFieldFromAPI(row);
-                                                                                                                    } else {
-                                                                                                                        setExcelData(excelData.filter(r => r.id !== row.id));
-                                                                                                                        setSelectedExcelRows(prev => {
-                                                                                                                            const newSet = new Set(prev);
-                                                                                                                            newSet.delete(row.id);
-                                                                                                                            return newSet;
-                                                                                                                        });
-                                                                                                                        showToast('Field deleted successfully', 'success');
-                                                                                                                    }
-                                                                                                                } catch (error) {
-                                                                                                                    // Error is already handled in deleteExcelFieldFromAPI
-                                                                                                                }
-                                                                                                            }
-                                                                                                        );
-                                                                                                    }}
-                                                                                                    className="text-red-600 hover:text-red-800"
-                                                                                                    title="Delete this field"
-                                                                                                >
-                                                                                                    <Trash2 className="h-3 w-3" />
-                                                                                                </button>
-                                                                                                {/* <button
-                                                                                                    onClick={() => {
-                                                                                                        const newId = Math.max(...excelData.map(r => r.id), 0) + 1;
-                                                                                                        const newRow: ExcelFieldData = {
-                                                                                                            id: newId,
-                                                                                                            fieldName: '',
-                                                                                                            fieldDescription: '',
-                                                                                                            fieldType: 'char',
-                                                                                                            fieldLength: '',
-                                                                                                            fieldValue: '',
-                                                                                                            originalFieldName: ''
-                                                                                                        };
-                                                                                                        const currentIndex = excelData.findIndex(r => r.id === row.id);
-                                                                                                        const newData = [...excelData];
-                                                                                                        newData.splice(currentIndex + 1, 0, newRow);
-                                                                                                        setExcelData(newData);
-                                                                                                        showToast('New row added below', 'success');
-                                                                                                    }}
-                                                                                                    className="text-blue-600 hover:text-blue-800"
-                                                                                                    title="Add row below"
-                                                                                                >
-                                                                                                    <Plus className="h-3 w-3" />
-                                                                                                </button> */}
-                                                                                            </div>
-                                                                                        </td>
-                                                                                    </tr>
-                                                                                ))}
-                                                                                {excelData.length === 0 && (
-                                                                                    <tr>
-                                                                                        <td colSpan={7} className="px-4 py-6 text-center text-gray-500 text-sm">
-                                                                                            <div className="flex flex-col items-center space-y-2">
-                                                                                                <span>No fields available for this table.</span>
-                                                                                                <button
-                                                                                                    onClick={addNewExcelRow}
-                                                                                                    className="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center space-x-1 text-sm"
-                                                                                                >
-                                                                                                    <Plus className="h-3 w-3" />
-                                                                                                    <span>Add First Field</span>
-                                                                                                </button>
-                                                                                            </div>
-                                                                                        </td>
-                                                                                    </tr>
-                                                                                )}
-                                                                            </tbody>
-                                                                        </table>
+                                                                            <div>
+                                                                                <p className="text-[10px] font-semibold text-green-800">Uploaded File</p>
+                                                                                <p className="text-[10px] text-green-700 font-mono">{table.file_name}</p>
+                                                                            </div>
+                                                                        </div>
                                                                     </div>
                                                                 )}
 
-                                                                <div className="mt-3 flex justify-between items-center text-xs text-gray-600">
-                                                                    <div className="flex items-center space-x-3">
-                                                                        <span>Total: {excelData.length} | Selected: {selectedExcelRows.size}</span>
-                                                                        <span className="text-green-600">✓ Saved: {savedExcelRows.size}</span>
-                                                                        {savingExcel && (
-                                                                            <div className="flex items-center space-x-1 text-blue-600">
-                                                                                <Loader2 className="h-3 w-3 animate-spin" />
-                                                                                <span>Saving...</span>
+                                                                {/* Upload dataset */}
+                                                                <div className="mx-3 mb-2">
+                                                                    {uploadingFor === table.id ? (
+                                                                        <div className="border border-blue-200 rounded-lg bg-blue-50 p-3">
+                                                                            <div className="flex items-center justify-between mb-2">
+                                                                                <span className="text-xs font-semibold text-blue-800">Upload Dataset</span>
+                                                                                <button onClick={() => { setUploadingFor(null); setDatasetFile(null); }} className="text-gray-400 hover:text-gray-600">
+                                                                                    <X className="h-3.5 w-3.5" />
+                                                                                </button>
                                                                             </div>
-                                                                        )}
-                                                                    </div>
-
-                                                                    {excelData.length > fieldsPerPage && (
-                                                                        <div className="flex items-center space-x-2">
-                                                                            <button
-                                                                                onClick={() => setCurrentFieldsPage(prev => Math.max(prev - 1, 1))}
-                                                                                disabled={currentFieldsPage === 1}
-                                                                                className="px-2 py-1 text-xs rounded border border-gray-300 bg-white disabled:opacity-50 hover:bg-gray-50"
+                                                                            <div
+                                                                                onDragOver={handleDatasetDragOver}
+                                                                                onDragLeave={handleDatasetDragLeave}
+                                                                                onDrop={handleDatasetDrop}
+                                                                                onClick={() => datasetFileInputRef.current?.click()}
+                                                                                className={`border-2 border-dashed rounded-lg cursor-pointer transition-all flex flex-col items-center justify-center gap-1.5 py-6
+                                                                                    ${isDraggingDataset ? 'border-blue-500 bg-blue-100'
+                                                                                        : datasetFile ? 'border-green-400 bg-green-50'
+                                                                                        : 'border-blue-300 hover:border-blue-500 hover:bg-blue-100'}`}
                                                                             >
-                                                                                Previous
-                                                                            </button>
-
-                                                                            <span className="text-xs text-gray-700">
-                                                                                Page {currentFieldsPage} of {totalFieldsPages}
-                                                                            </span>
-
-                                                                            <button
-                                                                                onClick={() => setCurrentFieldsPage(prev => Math.min(prev + 1, totalFieldsPages))}
-                                                                                disabled={currentFieldsPage === totalFieldsPages}
-                                                                                className="px-2 py-1 text-xs rounded border border-gray-300 bg-white disabled:opacity-50 hover:bg-gray-50"
-                                                                            >
-                                                                                Next
-                                                                            </button>
+                                                                                {datasetFile ? (
+                                                                                    <>
+                                                                                        <Check className="h-6 w-6 text-green-600" />
+                                                                                        <p className="text-xs font-semibold text-gray-800">{datasetFile.name}</p>
+                                                                                        <p className="text-[10px] text-gray-500">{(datasetFile.size / 1024).toFixed(1)} KB</p>
+                                                                                        <button onClick={e => { e.stopPropagation(); setDatasetFile(null); }} className="text-[10px] text-red-500 hover:text-red-700 underline mt-0.5">Remove</button>
+                                                                                    </>
+                                                                                ) : (
+                                                                                    <>
+                                                                                        <Upload className="h-6 w-6 text-blue-400" />
+                                                                                        <p className="text-xs text-blue-700 font-medium">{isDraggingDataset ? 'Drop file here' : 'Click to select or drag & drop'}</p>
+                                                                                        <p className="text-[10px] text-blue-400">.xlsx, .xls, .csv</p>
+                                                                                    </>
+                                                                                )}
+                                                                            </div>
+                                                                            <input ref={datasetFileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden"
+                                                                                onChange={e => { if (e.target.files?.[0]) setDatasetFile(e.target.files[0]); }} />
+                                                                            <div className="flex justify-end gap-2 mt-2">
+                                                                                <button onClick={() => { setUploadingFor(null); setDatasetFile(null); }} className="px-2.5 py-1 border border-gray-300 text-gray-600 rounded text-[10px] font-medium hover:bg-gray-50">Cancel</button>
+                                                                                <button
+                                                                                    onClick={() => handleUploadDataset(table.id)}
+                                                                                    disabled={!datasetFile || uploadingDataset}
+                                                                                    className="px-3 py-1 bg-blue-600 text-white rounded text-[10px] font-medium hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1"
+                                                                                >
+                                                                                    {uploadingDataset
+                                                                                        ? <><Loader2 className="h-3 w-3 animate-spin" /> Uploading…</>
+                                                                                        : <><Upload className="h-3 w-3" /> Upload</>}
+                                                                                </button>
+                                                                            </div>
                                                                         </div>
+                                                                    ) : (
+                                                                        <button
+                                                                            onClick={() => { setUploadingFor(table.id); setDatasetFile(null); }}
+                                                                            className="px-2.5 py-1 bg-white border border-gray-200 text-gray-600 rounded text-[10px] font-medium hover:bg-gray-50 hover:border-gray-300 flex items-center gap-1 shadow-sm"
+                                                                        >
+                                                                            <Upload className="h-3 w-3 text-gray-500" />
+                                                                            {table.has_uploaded_file ? 'Re-upload Dataset' : 'Upload Dataset'}
+                                                                        </button>
                                                                     )}
+                                                                </div>
 
-                                                                    <div className="text-xs text-gray-500">
-                                                                        Click cell to edit • Enter to save • Esc to cancel
+                                                                {/* Fields toolbar */}
+                                                                <div className="px-3 py-2 flex flex-wrap items-center justify-between gap-2 border-t border-b border-gray-200 bg-white">
+                                                                    <span className="text-xs font-semibold text-gray-700">
+                                                                        Manage Fields
+                                                                        {fieldsMap[table.id] && (
+                                                                            <span className="ml-1.5 text-[10px] font-normal text-gray-400">
+                                                                                ({fieldsMap[table.id].length} fields)
+                                                                            </span>
+                                                                        )}
+                                                                    </span>
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <button
+                                                                            onClick={() => addFieldRow(table.id)}
+                                                                            disabled={savingField}
+                                                                            className="px-2.5 py-1 bg-blue-600 text-white rounded text-[10px] font-medium hover:bg-blue-700 flex items-center gap-0.5 disabled:opacity-50"
+                                                                        >
+                                                                            <Plus className="h-3 w-3" /> Add row
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => fetchFields(table.id)}
+                                                                            className="px-2.5 py-1 bg-gray-100 text-gray-600 rounded text-[10px] font-medium hover:bg-gray-200 flex items-center gap-0.5"
+                                                                        >
+                                                                            <RefreshCw className="h-3 w-3" /> Refresh
+                                                                        </button>
                                                                     </div>
                                                                 </div>
+
+                                                                {/* ── Fields table ── */}
+                                                                {fieldsLoading[table.id] ? (
+                                                                    <div className="flex items-center justify-center py-8 gap-2 text-gray-500 text-xs">
+                                                                        <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                                                                        <span>Loading fields…</span>
+                                                                    </div>
+                                                                ) : (() => {
+                                                                    const allFields = fieldsMap[table.id] || [];
+                                                                    const currentPage = fieldPage[table.id] || 1;
+                                                                    const totalPages = Math.ceil(allFields.length / FIELDS_PER_PAGE);
+                                                                    const paginatedFields = allFields.slice(
+                                                                        (currentPage - 1) * FIELDS_PER_PAGE,
+                                                                        currentPage * FIELDS_PER_PAGE
+                                                                    );
+
+                                                                    return (
+                                                                        <div>
+                                                                            {/* FIX: inner table no longer needs extra overflow-x-auto — parent handles it */}
+                                                                            <table className="w-full" style={{ minWidth: '700px', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+                                                                                <thead>
+                                                                                    <tr className="bg-gray-100 border-b border-gray-200">
+                                                                                        {/* FIX: tighter column widths that add up to ~700px */}
+                                                                                        <th style={{ width: '130px' }} className="px-2 py-1.5 text-left text-[10px] font-semibold text-gray-600 uppercase border-r border-gray-200">Field Name</th>
+                                                                                        <th style={{ width: '170px' }} className="px-2 py-1.5 text-left text-[10px] font-semibold text-gray-600 uppercase border-r border-gray-200">Description</th>
+                                                                                        <th style={{ width: '80px' }} className="px-2 py-1.5 text-left text-[10px] font-semibold text-gray-600 uppercase border-r border-gray-200">Type</th>
+                                                                                        <th style={{ width: '55px' }} className="px-2 py-1.5 text-left text-[10px] font-semibold text-gray-600 uppercase border-r border-gray-200">Len</th>
+                                                                                        <th style={{ width: '195px' }} className="px-2 py-1.5 text-left text-[10px] font-semibold text-gray-600 uppercase border-r border-gray-200">Value</th>
+                                                                                        <th style={{ width: '70px' }} className="px-2 py-1.5 text-center text-[10px] font-semibold text-gray-600 uppercase">Actions</th>
+                                                                                    </tr>
+                                                                                </thead>
+                                                                                <tbody>
+                                                                                    {paginatedFields.map(row => (
+                                                                                        <tr
+                                                                                            key={row.id}
+                                                                                            className={`border-b border-gray-100 transition-colors hover:bg-gray-50 ${modifiedRows.has(row.id) ? '!bg-orange-50' : ''}`}
+                                                                                        >
+                                                                                            <td style={{ width: '130px', overflow: 'hidden' }} className="px-1 py-0.5 border-r border-gray-100">{renderCell(table.id, row, 'fieldName')}</td>
+                                                                                            <td style={{ width: '170px', overflow: 'hidden' }} className="px-1 py-0.5 border-r border-gray-100">{renderCell(table.id, row, 'fieldDescription')}</td>
+                                                                                            <td style={{ width: '80px', overflow: 'hidden' }} className="px-1 py-0.5 border-r border-gray-100">{renderCell(table.id, row, 'fieldType')}</td>
+                                                                                            <td style={{ width: '55px', overflow: 'hidden' }} className="px-1 py-0.5 border-r border-gray-100">{renderCell(table.id, row, 'fieldLength')}</td>
+                                                                                            <td style={{ width: '195px', overflow: 'hidden' }} className="px-1 py-0.5 border-r border-gray-100">{renderCell(table.id, row, 'fieldValue')}</td>
+                                                                                            <td style={{ width: '70px' }} className="px-1 py-0.5 text-center">
+                                                                                                <div className="flex items-center justify-center gap-0.5">
+                                                                                                    <button
+                                                                                                        onClick={() => addFieldRow(table.id)}
+                                                                                                        disabled={savingField}
+                                                                                                        className="text-blue-500 hover:text-blue-700 p-0.5 rounded hover:bg-blue-50"
+                                                                                                        title="Add row"
+                                                                                                    >
+                                                                                                        <Plus className="h-3.5 w-3.5" />
+                                                                                                    </button>
+                                                                                                    <button
+                                                                                                        onClick={() => saveField(table.id, row)}
+                                                                                                        disabled={savingField}
+                                                                                                        className={`p-0.5 rounded disabled:opacity-50 ${modifiedRows.has(row.id)
+                                                                                                            ? 'text-orange-500 hover:text-orange-700 hover:bg-orange-50'
+                                                                                                            : 'text-green-500 hover:text-green-700 hover:bg-green-50'}`}
+                                                                                                        title={modifiedRows.has(row.id) ? 'Update field' : 'Save field'}
+                                                                                                    >
+                                                                                                        <Save className="h-3.5 w-3.5" />
+                                                                                                    </button>
+                                                                                                    <button
+                                                                                                        onClick={() => deleteField(table.id, row)}
+                                                                                                        className="text-red-400 hover:text-red-600 p-0.5 rounded hover:bg-red-50"
+                                                                                                        title="Delete field"
+                                                                                                    >
+                                                                                                        <Trash2 className="h-3.5 w-3.5" />
+                                                                                                    </button>
+                                                                                                </div>
+                                                                                            </td>
+                                                                                        </tr>
+                                                                                    ))}
+                                                                                    {allFields.length === 0 && (
+                                                                                        <tr>
+                                                                                            <td colSpan={6} className="px-4 py-6 text-center">
+                                                                                                <p className="text-gray-400 text-xs mb-2">No fields yet.</p>
+                                                                                                <button onClick={() => addFieldRow(table.id)} className="px-2.5 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 flex items-center gap-1 mx-auto">
+                                                                                                    <Plus className="h-3 w-3" /> Add first field
+                                                                                                </button>
+                                                                                            </td>
+                                                                                        </tr>
+                                                                                    )}
+                                                                                </tbody>
+                                                                            </table>
+
+                                                                            {/* Pagination */}
+                                                                            {totalPages > 1 && (
+                                                                                <div className="px-3 py-2 border-t border-gray-200 bg-white flex items-center justify-between">
+                                                                                    <span className="text-[10px] text-gray-500">
+                                                                                        Showing {((currentPage - 1) * FIELDS_PER_PAGE) + 1}–{Math.min(currentPage * FIELDS_PER_PAGE, allFields.length)} of {allFields.length} fields
+                                                                                    </span>
+                                                                                    <div className="flex items-center gap-0.5">
+                                                                                        <button onClick={() => setFieldPage(p => ({ ...p, [table.id]: 1 }))} disabled={currentPage === 1} className="px-1.5 py-0.5 text-[10px] rounded border border-gray-200 bg-white disabled:opacity-40 hover:bg-gray-50">«</button>
+                                                                                        <button onClick={() => setFieldPage(p => ({ ...p, [table.id]: currentPage - 1 }))} disabled={currentPage === 1} className="px-1.5 py-0.5 text-[10px] rounded border border-gray-200 bg-white disabled:opacity-40 hover:bg-gray-50">‹</button>
+                                                                                        {Array.from({ length: totalPages }, (_, i) => i + 1)
+                                                                                            .filter(pg => pg === 1 || pg === totalPages || Math.abs(pg - currentPage) <= 1)
+                                                                                            .reduce<(number | string)[]>((acc, pg, idx, arr) => {
+                                                                                                if (idx > 0 && (pg as number) - (arr[idx - 1] as number) > 1) acc.push('…');
+                                                                                                acc.push(pg); return acc;
+                                                                                            }, [])
+                                                                                            .map((pg, i) => pg === '…'
+                                                                                                ? <span key={`e${i}`} className="px-1 py-0.5 text-[10px] text-gray-400">…</span>
+                                                                                                : <button
+                                                                                                    key={pg}
+                                                                                                    onClick={() => setFieldPage(prev => ({ ...prev, [table.id]: pg as number }))}
+                                                                                                    className={`px-2 py-0.5 text-[10px] rounded border ${currentPage === pg ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-200 bg-white hover:bg-gray-50'}`}
+                                                                                                >
+                                                                                                    {pg}
+                                                                                                </button>
+                                                                                            )
+                                                                                        }
+                                                                                        <button onClick={() => setFieldPage(p => ({ ...p, [table.id]: currentPage + 1 }))} disabled={currentPage === totalPages} className="px-1.5 py-0.5 text-[10px] rounded border border-gray-200 bg-white disabled:opacity-40 hover:bg-gray-50">›</button>
+                                                                                        <button onClick={() => setFieldPage(p => ({ ...p, [table.id]: totalPages }))} disabled={currentPage === totalPages} className="px-1.5 py-0.5 text-[10px] rounded border border-gray-200 bg-white disabled:opacity-40 hover:bg-gray-50">»</button>
+                                                                                    </div>
+                                                                                </div>
+                                                                            )}
+
+                                                                            <div className="px-3 py-1.5 border-t border-gray-200 bg-white text-[10px] text-gray-400 text-right">
+                                                                                Click cell to edit · Enter to save · Esc to cancel
+                                                                            </div>
+                                                                        </div>
+                                                                    );
+                                                                })()}
                                                             </div>
-                                                        )}
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             )}
                                         </React.Fragment>
-                                    ))
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-
-                {toast.show && (
-                    <div className="fixed top-4 right-4 z-[9999] animate-pulse">
-                        <div className={`flex items-center p-4 rounded-lg shadow-xl border max-w-sm ${toast.type === 'success' ? 'bg-green-500 text-white border-green-600' :
-                            toast.type === 'error' ? 'bg-red-500 text-white border-red-600' :
-                                'bg-yellow-500 text-white border-yellow-600'
-                            }`}>
-                            <div className="flex items-center">
-                                {toast.type === 'success' && <Check className="h-5 w-5 mr-2 flex-shrink-0" />}
-                                {toast.type === 'error' && <X className="h-5 w-5 mr-2 flex-shrink-0" />}
-                                {toast.type === 'warning' && <AlertTriangle className="h-5 w-5 mr-2 flex-shrink-0" />}
-                                <span className="text-sm font-medium">{toast.message}</span>
-                            </div>
-                            <button
-                                onClick={() => setToast({ show: false, message: '', type: 'success' })}
-                                className="ml-3 text-white hover:text-gray-200 flex-shrink-0"
-                            >
-                                <X className="h-4 w-4" />
-                            </button>
-                        </div>
-                    </div>
-                )}
-
-                {confirmDialog.show && (
-                    <div
-                        className="fixed inset-0 z-[10000] flex items-center justify-center"
-                        style={{
-                            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-                            position: 'fixed',
-                            top: 0,
-                            left: 0,
-                            right: 0,
-                            bottom: 0
-                        }}
-                    >
-                        <div
-                            className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 relative"
-                            style={{
-                                backgroundColor: 'white',
-                                borderRadius: '8px',
-                                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-                                maxWidth: '28rem',
-                                width: '100%',
-                                margin: '0 1rem',
-                                zIndex: 10001
-                            }}
-                        >
-                            <div className="px-6 py-4 border-b border-gray-200">
-                                <h3 className="text-lg font-medium text-gray-900">{confirmDialog.title}</h3>
-                            </div>
-
-                            <div className="px-6 py-4">
-                                <p className="text-sm text-gray-600">{confirmDialog.message}</p>
-                            </div>
-
-                            <div className="px-6 py-4 border-t border-gray-200 flex justify-end space-x-3">
-                                <button
-                                    onClick={() => {
-                                        confirmDialog.onCancel();
-                                    }}
-                                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        confirmDialog.onConfirm();
-                                    }}
-                                    className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
-                                >
-                                    Delete
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {showTableModal && (
-                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                        <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
-                            <div className="px-6 py-4 border-b border-gray-200">
-                                <div className="flex justify-between items-center">
-                                    <h3 className="text-lg font-medium text-gray-900">Create Master Data Table</h3>
-                                    <button
-                                        onClick={() => setShowTableModal(false)}
-                                        className="text-gray-400 hover:text-gray-600"
-                                    >
-                                        <X className="h-6 w-6" />
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div className="px-6 py-4 space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                                        Master Data Table Name *
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={newTable.table_name}
-                                        onChange={(e) => setNewTable({
-                                            ...newTable,
-                                            table_name: e.target.value
-                                        })}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                        placeholder="Enter table name"
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                                        Description *
-                                    </label>
-                                    <textarea
-                                        value={newTable.description}
-                                        onChange={(e) => setNewTable({
-                                            ...newTable,
-                                            description: e.target.value
-                                        })}
-                                        rows={3}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                        placeholder="Enter description"
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="px-6 py-4 border-t border-gray-200 flex justify-end space-x-3">
-                                <button
-                                    onClick={() => setShowTableModal(false)}
-                                    disabled={creating}
-                                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 disabled:opacity-50"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    onClick={handleCreateTable}
-                                    disabled={creating || !newTable.table_name.trim() || !newTable.description.trim()}
-                                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center space-x-2"
-                                >
-                                    <Plus className="h-4 w-4" />
-                                    <span>{creating ? 'Creating...' : 'Create Master Data Table'}</span>
-                                </button>
-                            </div>
+                                    ))}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 )}
             </div>
+
+            {/* ── Create Modal ── */}
+            {showCreateModal && (
+                <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4">
+                        <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
+                            <h3 className="text-sm font-semibold text-gray-900">Create Master Data Table</h3>
+                            <button onClick={closeCreateModal} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100">
+                                <X className="h-4 w-4" />
+                            </button>
+                        </div>
+                        <div className="px-5 py-4 space-y-3">
+                            <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">Table Name <span className="text-red-500">*</span></label>
+                                <input
+                                    type="text"
+                                    value={newTableName}
+                                    onChange={e => setNewTableName(e.target.value)}
+                                    onKeyDown={e => { if (e.key === 'Enter') handleCreate(); if (e.key === 'Escape') closeCreateModal(); }}
+                                    className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    placeholder="e.g. Products, HospitalData, Sales"
+                                    autoFocus
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">Description <span className="text-red-500">*</span></label>
+                                <textarea
+                                    value={newTableDesc}
+                                    onChange={e => setNewTableDesc(e.target.value)}
+                                    rows={3}
+                                    className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                                    placeholder="Brief description of this master data table"
+                                />
+                            </div>
+                            <p className="text-[10px] text-gray-400">After creating, you can add fields manually or upload a dataset from the expanded view.</p>
+                        </div>
+                        <div className="px-5 py-3.5 border-t border-gray-100 flex justify-end gap-2">
+                            <button onClick={closeCreateModal} disabled={creating} className="px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg text-xs font-medium hover:bg-gray-50 disabled:opacity-50">Cancel</button>
+                            <button
+                                onClick={handleCreate}
+                                disabled={creating || !newTableName.trim() || !newTableDesc.trim()}
+                                className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1.5"
+                            >
+                                {creating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                                {creating ? 'Creating…' : 'Create Table'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Toast ── */}
+            {toast.show && (
+                <div className="fixed top-4 right-4 z-[9999]">
+                    <div className={`flex items-center p-3 rounded-lg shadow-xl border max-w-sm text-white text-xs font-medium
+                        ${toast.type === 'success' ? 'bg-green-500 border-green-600'
+                        : toast.type === 'error' ? 'bg-red-500 border-red-600'
+                        : 'bg-yellow-500 border-yellow-600'}`}
+                    >
+                        {toast.type === 'success' && <Check className="h-3.5 w-3.5 mr-2 flex-shrink-0" />}
+                        {toast.type === 'error' && <X className="h-3.5 w-3.5 mr-2 flex-shrink-0" />}
+                        {toast.type === 'warning' && <AlertTriangle className="h-3.5 w-3.5 mr-2 flex-shrink-0" />}
+                        <span>{toast.message}</span>
+                        <button onClick={() => setToast({ show: false, message: '', type: 'success' })} className="ml-2.5 text-white/80 hover:text-white">
+                            <X className="h-3 w-3" />
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Confirm Dialog ── */}
+            {confirmDialog.show && (
+                <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50">
+                    <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4">
+                        <div className="px-5 py-3.5 border-b border-gray-100">
+                            <h3 className="text-sm font-semibold text-gray-900">{confirmDialog.title}</h3>
+                        </div>
+                        <div className="px-5 py-4">
+                            <p className="text-xs text-gray-600">{confirmDialog.message}</p>
+                        </div>
+                        <div className="px-5 py-3.5 border-t border-gray-100 flex justify-end gap-2">
+                            <button onClick={confirmDialog.onCancel} className="px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg text-xs hover:bg-gray-50">Cancel</button>
+                            <button onClick={confirmDialog.onConfirm} className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs hover:bg-red-700">Confirm</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
