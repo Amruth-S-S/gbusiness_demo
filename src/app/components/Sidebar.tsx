@@ -782,7 +782,11 @@ const Sidebar: React.FC<SidebarProps> = ({ }) => {
     setShowSubMenu(false);
   };
 
-  const handleLogout = () => { closeMobileMenu(); router.push('/'); };
+ const handleLogout = () => {
+  closeMobileMenu();
+  sessionStorage.removeItem('currentUserData'); // clear auth data
+  router.replace('/');                          // replace history, not push
+};
   const handleBoardClick = (boardId: string) => { setActiveBoardId(boardId); closeMobileMenu(); };
 
   // ─── Highlight search match ───────────────────────────────────────────────────

@@ -446,7 +446,7 @@ export default function Page() {
     }
 
     if (!userId) {
-      alert("User session not found. Please log in again.");
+      toast.error("User session not found. Please log in again.");
       return;
     }
 
@@ -593,7 +593,7 @@ export default function Page() {
     e.preventDefault();
 
     if (!selectedDate || selectedFiles.length === 0) {
-      alert('Please select both date and files');
+      toast.error('Please select both date and files');
       return;
     }
 
@@ -646,7 +646,7 @@ export default function Page() {
 
     } catch (error) {
       console.error('Upload error:', error);
-      alert('An unknown error occurred. Please try again later.');
+      toast.error('An unknown error occurred. Please try again later.');
     } finally {
       setIsUploading(false);
     }
@@ -671,7 +671,7 @@ export default function Page() {
     }
 
     if (!userId) {
-      alert("User session not found. Please log in again.");
+      toast.error("User session not found. Please log in again.");
       return;
     }
 
@@ -1225,7 +1225,7 @@ export default function Page() {
         throw new Error(errorDetails);
       }
 
-      alert('Email sent successfully!');
+      toast.error('Email sent successfully!');
     } catch (error) {
       console.error('Error sending email:', error);
       const errorMessage = error instanceof Error ?
@@ -1242,7 +1242,7 @@ export default function Page() {
         displayMessage = `Invalid request parameters: ${errorMessage}`;
       }
 
-      alert(`Failed to send email: ${displayMessage}`);
+      toast.error(`Failed to send email: ${displayMessage}`);
     } finally {
       setShowEmailModal(false);
       setShowDownloadModal(false);
@@ -1663,7 +1663,7 @@ export default function Page() {
 
   const downloadExcel = () => {
     if (!runResult?.table || runResult.table.data.length === 0) {
-      alert("No data to download.");
+      toast.error("No data to download.");
       return;
     }
 
@@ -2541,7 +2541,7 @@ export default function Page() {
   const handleSaveFilteredClicks = async (id: string, boardId: string | null) => {
     if (!id || !boardId) {
       console.error("Missing parameters:", { id, boardId });
-      alert("Error: Missing required parameters.");
+      toast.error("Error: Missing required parameters.");
       return;
     }
 
@@ -2591,7 +2591,7 @@ export default function Page() {
       if (!response.ok) {
         const errorData = await response.json();
         console.error("Error details:", errorData);
-        alert(`Error: ${JSON.stringify(errorData)}`);
+        toast.error(`Error: ${JSON.stringify(errorData)}`);
         return;
       }
 
@@ -2636,14 +2636,14 @@ export default function Page() {
       toast.success("Documentation updated successfully!");
     } catch (error) {
       console.error("Network or unexpected error:", error);
-      alert("A network error occurred. Check the console for details.");
+      toast.error("A network error occurred. Check the console for details.");
     }
   };
 
   const handleSaveClicks = async (id: string, boardId: string | null) => {
     if (!id || !boardId) {
       console.error("Missing parameters:", { id, boardId });
-      alert("Error: Missing required parameters.");
+      toast.error("Error: Missing required parameters.");
       return;
     }
 
@@ -2685,7 +2685,7 @@ export default function Page() {
       if (!response.ok) {
         const errorData = await response.json();
         console.error("Error details:", errorData);
-        alert(`Error: ${JSON.stringify(errorData)}`);
+        toast.error(`Error: ${JSON.stringify(errorData)}`);
         return;
       }
 
@@ -2719,7 +2719,7 @@ export default function Page() {
       toast.success("Documentation updated successfully!");
     } catch (error) {
       console.error("Network or unexpected error:", error);
-      alert("A network error occurred. Check the console for details.");
+      toast.error("A network error occurred. Check the console for details.");
     }
   };
 
@@ -3043,14 +3043,14 @@ export default function Page() {
     // Validate input
     if (!newPromptName?.trim()) {
       console.error("Error: Prompt cannot be empty");
-      alert("Please enter a valid prompt.");
+      toast.error("Please enter a valid prompt.");
       setIsLoading(false);
       return;
     }
 
     if (!boardId) {
       console.error("Error: Board ID is missing");
-      alert("Board ID is required to run the prompt.");
+      toast.error("Board ID is required to run the prompt.");
       setIsLoading(false);
       return;
     }
@@ -3122,22 +3122,22 @@ export default function Page() {
         setShowCharts(shouldShowCharts); // Display the chart if applicable
       } else {
         console.warn("Warning: API returned no data.");
-        alert("No data was returned from the server.");
+        toast.error("No data was returned from the server.");
       }
     } catch (error: unknown) {
       // Handle errors based on error type
       if (axios.isAxiosError(error)) {
         console.error("Axios Error:", error.response?.data || error.message);
-        alert(
+        toast.error(
           `Server Error (${error.response?.status || "Unknown"}): ${error.response?.data?.message || error.message || "An error occurred"
           }`
         );
       } else if (error instanceof Error) {
         console.error("Error:", error.message);
-        alert(`Error: ${error.message}`);
+        toast.error(`Error: ${error.message}`);
       } else {
         console.error("Unknown Error:", error);
-        alert("An unknown error occurred. Please try again later.");
+        toast.error("An unknown error occurred. Please try again later.");
       }
     } finally {
       setIsLoading(false); // Reset loading state after API call (success or error)
@@ -3184,18 +3184,18 @@ export default function Page() {
       if (axios.isAxiosError(error)) {
         // Axios-specific error
         console.error('Axios Error:', error.response?.data || error.message);
-        alert(
+        toast.error(
           `Server Error (${error.response?.status || 'Unknown'}): ${error.response?.data?.message || error.message || 'An error occurred'
           }`
         );
       } else if (error instanceof Error) {
         // Generic JavaScript Error
         console.error('Error:', error.message);
-        alert(`Error: ${error.message}`);
+        toast.error(`Error: ${error.message}`);
       } else {
         // Unknown error type
         console.error('Unknown Error:', error);
-        alert('An unknown error occurred. Please try again later.');
+        toast.error('An unknown error occurred. Please try again later.');
       }
     } finally {
       setIsLoading(false); // Stop loading regardless of success or failure
@@ -3383,7 +3383,7 @@ export default function Page() {
     setIsLoading(true); // Set loading to true when saving starts
     // Input validation
     if (!newPromptName.trim()) {
-      alert("Prompt cannot be empty!");
+      toast.error("Prompt cannot be empty!");
       setIsLoading(false); // Reset loading state
       return;
     }
@@ -3392,7 +3392,7 @@ export default function Page() {
     //   return;
     // }
     if (!boardId) {
-      alert("Error: boardId is missing.");
+      toast.error("Error: boardId is missing.");
       setIsLoading(false); // Reset loading state
       return;
     }
@@ -3420,7 +3420,7 @@ export default function Page() {
 
     // Final validation
     if (!loggedInUserName || loggedInUserName.trim() === "" || loggedInUserName === "Unknown User") {
-      alert("Error: User name is missing in localStorage. Please log in again.");
+      toast.error("Error: User name is missing in localStorage. Please log in again.");
       setIsLoading(false); // Reset loading state
       return;
     }
@@ -3458,7 +3458,7 @@ export default function Page() {
       // Handle response
       if (!response.ok) {
         const errorData = await response.json();
-        alert(`Failed to save prompt: ${errorData.message || "Unknown error"}`);
+        toast.error(`Failed to save prompt: ${errorData.message || "Unknown error"}`);
         setIsLoading(false); // Reset loading state
         return;
       }
@@ -3486,7 +3486,7 @@ export default function Page() {
       setActiveTab("prompts"); // Redirect to the "prompts" tab
     } catch (error) {
       console.error("Network Error:", error);
-      alert("Network error: Failed to save the prompt.");
+      toast.error("Network error: Failed to save the prompt.");
     } finally {
       setIsLoading(false); // Reset loading state after the operation
     }
@@ -3791,9 +3791,9 @@ export default function Page() {
 
                         // { key: "tally",         label: "Manage ETL" },
 
-                        // { key: "master",        label: "Master Settings" },
+                        { key: "master",        label: "Master Settings" },
                         // { key: "parameters",    label: "Parameter Settings" },
-                        // { key: "timeline",      label: "Timeline Settings" },
+                        { key: "timeline",      label: "Timeline Settings" },
                       ].map((tab) => (
                         <button
                           key={tab.key}

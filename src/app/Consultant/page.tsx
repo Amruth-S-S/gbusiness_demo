@@ -19,6 +19,13 @@ export default function Page() {
     const [showMobileMenu, setShowMobileMenu] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
+    useEffect(() => {
+    const userData = sessionStorage.getItem('currentUserData');
+    if (!userData) {
+      router.replace('/Login'); // kick back to login if no session
+    }
+  }, []);
+
     const [userData, setUserData] = useState<UserData>({
       email: "",
       userId: "",

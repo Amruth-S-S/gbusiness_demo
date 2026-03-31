@@ -1,7 +1,8 @@
 "use client"
 import { useState, useRef, useEffect } from "react";
 import React from 'react';
-import { usePathname } from "next/navigation";
+
+import { usePathname, useRouter } from "next/navigation";
 
 export default function Page() {
   const [showDropdown, setShowDropdown] = useState(false);
@@ -16,6 +17,14 @@ export default function Page() {
     role: "",
   });
 
+  const router = useRouter();
+
+ useEffect(() => {
+    const userData = sessionStorage.getItem('currentUserData');
+    if (!userData) {
+      router.replace('/Login'); // kick back to login if no session
+    }
+  }, []);
   // Check for mobile on mount and resize
   useEffect(() => {
     const checkMobile = () => {
