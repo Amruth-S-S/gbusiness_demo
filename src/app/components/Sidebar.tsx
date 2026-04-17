@@ -126,8 +126,7 @@ const Sidebar: React.FC<SidebarProps> = ({ }) => {
 
   // Settings / Password
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
-  const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -221,7 +220,6 @@ const Sidebar: React.FC<SidebarProps> = ({ }) => {
   };
 
   const handleSettingsClick = () => { setIsSettingsModalOpen(true); setShowUserDropdown(false); closeMobileMenu(); };
-  const handleUpdatePasswordClick = () => setIsPasswordModalOpen(true);
 
   // ─── Mobile ──────────────────────────────────────────────────────────────────
   useEffect(() => { setIsMounted(true); }, []);

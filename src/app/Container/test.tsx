@@ -40,6 +40,7 @@ import TimelineSettings from "../components/TimelineSettings";
 import ParameterSettings from "../components/ParameterSettings";
 import { usePathname } from 'next/navigation';
 import TallySetting from "../components/TallySetting";
+import ManageParameterSetting from "../components/Manageparametersetting";
 
 ChartJS.register(
   ArcElement,
@@ -2377,7 +2378,7 @@ const handleViewTables = async () => {
     { key: "tables", label: "Manage Tables" },
     { key: "documentation", label: "AI Documentation" },
     { key: "tally", label: "Manage ETL" },
-    // { key: "parameters", label: "Parameter Settings" },
+    { key: "parameter", label: "Parameter Settings" },
     // { key: "timeline", label: "Timeline Settings" },
   ];
 
@@ -3666,6 +3667,7 @@ const handleViewTables = async () => {
         {activeTab === "timeline" && <TimelineSettings boardId={boardId ?? ""} />}
         {activeTab === "parameters" && <ParameterSettings boardId={boardId ?? ""} />}
         {activeTab === "tally" && <TallySetting />}
+        {activeTab === "parameter" && <ManageParameterSetting boardId={boardId ?? ""} />}
 
       </div>
     </div>

@@ -40,6 +40,7 @@ import TimelineSettings from "../components/TimelineSettings";
 import ParameterSettings from "../components/ParameterSettings";
 import { usePathname } from 'next/navigation';
 import TallySetting from "../components/TallySetting";
+import ManageParameterSetting from "../components/Manageparametersetting";
 
 ChartJS.register(
   ArcElement,
@@ -3738,10 +3739,10 @@ export default function Page() {
                   { key: "prompts", label: "Manage Prompts" },
                   { key: "repository", label: "Prompts Repository" },
 
-                  { key: "tally",        label: "Manage ETL" },
+                  // { key: "tally",        label: "Manage ETL" },
 
                   { key: "master",       label: "Master Settings" },
-                  // { key: "parameters",   label: "Parameter Settings" },
+                  { key: "parameter",   label: "Parameter Settings" },
                   { key: "timeline",     label: "Timeline Settings" },
                 ].map((tab) => (
                   <button
@@ -3773,7 +3774,7 @@ export default function Page() {
                       // { key: "tally",         label: "Manage ETL" },
 
                       { key: "master",        label: "Master Settings" },
-                      // { key: "parameters",    label: "Parameter Settings" },
+                      { key: "parameter",    label: "Parameter Settings" },
                       { key: "timeline",      label: "Timeline Settings" },
                     ].find((t) => t.key === activeTab)?.label ?? "Select Tab"}
                   </span>
@@ -3792,7 +3793,7 @@ export default function Page() {
                         // { key: "tally",         label: "Manage ETL" },
 
                         { key: "master",        label: "Master Settings" },
-                        // { key: "parameters",    label: "Parameter Settings" },
+                        { key: "parameter",    label: "Parameter Settings" },
                         { key: "timeline",      label: "Timeline Settings" },
                       ].map((tab) => (
                         <button
@@ -6530,9 +6531,17 @@ export default function Page() {
           <TimelineSettings boardId={boardId ?? ""} />
         )}
 
-        {activeTab === "parameters" && (
+        {/* {activeTab === "parameters" && (
           <ParameterSettings boardId={boardId ?? ""} />
-        )}
+        )} */}
+
+       {activeTab === "parameter" && (
+  <ManageParameterSetting 
+    boardId={boardId ?? ""} 
+    dataSources={dataSources}   // ← add this
+  />
+)}
+        
 
         {activeTab === "tally" && (
           <TallySetting />
