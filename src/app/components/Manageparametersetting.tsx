@@ -1406,132 +1406,42 @@ const [quickSelectInput, setQuickSelectInput] = useState("");
                                     </button>
                                   </div>
 
-                                  {/* ── NEW: Filter Summary Section ── */}
-                                  
-{(() => {
-  const steps = filterSummaries[Number(ps.id)] || [];
-  return (
-    <div className="pt-3 border-t border-emerald-200">
-      <div className="flex items-center gap-2 mb-2">
-        <Filter className="h-3.5 w-3.5 text-emerald-600" />
-        <p className="text-xs font-bold text-emerald-700 uppercase tracking-wide">
-          {steps.length > 0
-            ? `Applied Filters — ${steps.length} step${steps.length > 1 ? "s" : ""}`
-            : "Filter Steps"}
-            
-        </p>
-  {(() => {
-  const paramId = selectedDataset?.param_id;
-
-  const summaries =
-    paramId !== undefined
-      ? filterSummaries?.[paramId] || []
-      : [];
-
-  return summaries.length > 0 ? (
-    <div className="mt-4 p-4 bg-white border border-gray-200 rounded-xl shadow-sm">
-      
-      <div className="flex items-center gap-2 mb-2">
-        <Filter className="h-4 w-4 text-indigo-600" />
-        <h3 className="text-sm font-semibold text-gray-800">
-          Filter Summary
-        </h3>
-      </div>
-
-      <div className="space-y-2">
-        {summaries.map((item: any, idx: number) => (
-          <div
-            key={idx}
-            className="px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-lg text-sm text-indigo-800"
-          >
-            {item.note}
-          </div>
-        ))}
-      </div>
-
-    </div>
-  ) : (
-    <p className="text-sm text-gray-500 mt-2">
-      No filter steps recorded yet
-    </p>
-  );
-})()}
-      </div>
-
-      {steps.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-          {steps.map((f, i) => (
-            <div key={i}
-              className="bg-white rounded-xl border border-emerald-200 p-3 shadow-sm hover:shadow-md transition-shadow flex items-start gap-2.5">
-              {/* Step number circle */}
-              <span className="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5">
-                {i + 1}
-              </span>
-              <div className="flex-1 min-w-0">
-                {/* Filter type badge */}
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded text-[9px] font-semibold uppercase tracking-wide mb-1">
-                  {getFilterIcon(f.filter_type)} {f.filter_type.replace(/_/g, " ")}
-                </span>
-                {/* Note */}
-                <p className="text-xs text-gray-700 font-medium leading-snug truncate" title={f.note}>
-                  {f.note || "—"}
-                </p>
-                {/* Params preview */}
-                {f.params && Object.keys(f.params).length > 0 && (
-                  <p className="text-[10px] text-gray-400 mt-0.5 truncate">
-                    {Object.entries(f.params)
-                      .filter(([, v]) => v !== null && v !== undefined)
-                      .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.slice(0, 3).join(", ") + (v.length > 3 ? "…" : "") : String(v)}`)
-                      .join(" · ")}
-                  </p>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p className="text-xs text-emerald-400 italic">No filter steps recorded yet</p>
-      )}
-    </div>
-  );
-})()}
-                                  {/* {filterSummaries[ps.id] && filterSummaries[ps.id].length > 0 && (
-                                    <div className="pt-3 border-t border-emerald-200">
-                                      <div className="flex items-center gap-2 mb-2">
-                                        <Filter className="h-3.5 w-3.5 text-emerald-600" />
-                                        <p className="text-xs font-bold text-emerald-700 uppercase tracking-wide">
-                                          Applied Filters ({filterSummaries[ps.id].length} step{filterSummaries[ps.id].length > 1 ? "s" : ""})
-                                        </p>
-                                      </div>
-                                      <div className="flex flex-wrap gap-2">
+                                  {/* ── Filter Summary Section ── */}
+                                  <div className="pt-3 border-t border-emerald-200">
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <Filter className="h-3.5 w-3.5 text-emerald-600" />
+                                      <p className="text-xs font-bold text-emerald-700 uppercase tracking-wide">
+                                        {(filterSummaries[ps.id] || []).length > 0
+                                          ? `Applied Filters — ${filterSummaries[ps.id].length} step${filterSummaries[ps.id].length > 1 ? "s" : ""}`
+                                          : "No Filter Steps"}
+                                      </p>
+                                    </div>
+                                    {(filterSummaries[ps.id] || []).length > 0 ? (
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                                         {filterSummaries[ps.id].map((f, i) => (
-                                          <div
-                                            key={i}
-                                            className="flex items-center gap-2 px-3 py-1.5 bg-white border border-emerald-200 rounded-lg text-xs shadow-sm hover:shadow-md transition-shadow"
-                                            title={f.note}
-                                          >
-                                           
-                                            <span className="w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0">
-                                              {i + 1}
-                                            </span>
-                                          
-                                            <span className="text-sm leading-none">{getFilterIcon(f.filter_type)}</span>
-                                          
-                                            <span className="text-gray-700 font-medium max-w-[200px] truncate">
-                                              {f.note || f.filter_type.replace(/_/g, " ")}
-                                            </span>
+                                          <div key={i} className="bg-white rounded-xl border border-emerald-200 p-3 shadow-sm hover:shadow-md transition-shadow flex items-start gap-2.5">
+                                            <span className="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5">{i + 1}</span>
+                                            <div className="flex-1 min-w-0">
+                                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded text-[9px] font-semibold uppercase tracking-wide mb-1">
+                                                {getFilterIcon(f.filter_type)} {f.filter_type.replace(/_/g, " ")}
+                                              </span>
+                                              <p className="text-xs text-gray-700 font-medium leading-snug" title={f.note}>{f.note || "—"}</p>
+                                              {f.params && Object.keys(f.params).length > 0 && (
+                                                <p className="text-[10px] text-gray-400 mt-0.5 truncate">
+                                                  {Object.entries(f.params)
+                                                    .filter(([, v]) => v !== null && v !== undefined)
+                                                    .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.slice(0, 3).join(", ") + (v.length > 3 ? "…" : "") : String(v)}`)
+                                                    .join(" · ")}
+                                                </p>
+                                              )}
+                                            </div>
                                           </div>
                                         ))}
                                       </div>
-                                    </div>
-                                  )}
-
-                                 
-                                  {(!filterSummaries[ps.id] || filterSummaries[ps.id].length === 0) && (
-                                    <div className="pt-3 border-t border-emerald-200">
-                                      <p className="text-xs text-emerald-500 italic">No filter steps recorded yet</p>
-                                    </div>
-                                  )} */}
+                                    ) : (
+                                      <p className="text-xs text-emerald-400 italic">No filter steps recorded yet</p>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
                             </div>
@@ -2135,48 +2045,61 @@ const displayHeader = (currentFilterType === "rename_column" && previewData?.old
                       </div>
                     )}
 
-                    {/* ── NEW: Day checkboxes ── */}
-                    {dateSummaryLoaded && availableDays.length > 0 && (
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <label className="block text-sm font-medium text-gray-700">Day(s)</label>
-                          <div className="flex items-center gap-2">
-                            {selectedDays.length > 0 && (
-                              <button onClick={() => setSelectedDays([])} className="text-xs text-gray-400 hover:text-red-500">Clear</button>
-                            )}
-                            <button
-                              onClick={() => setSelectedDays(availableDays)}
-                              className="text-xs text-pink-600 hover:text-pink-800 font-medium">
-                              All
-                            </button>
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-7 gap-1">
-                          {availableDays.map(d => {
-                            const isSelected = selectedDays.includes(d);
-                            return (
-                              <button key={d}
-                                onClick={() => isSelected
-                                  ? setSelectedDays(p => p.filter(x => x !== d))
-                                  : setSelectedDays(p => [...p, d])
-                                }
-                                className={`py-1.5 rounded text-xs font-semibold transition-all ${
-                                  isSelected
-                                    ? "bg-pink-600 text-white shadow-sm"
-                                    : "bg-white text-gray-700 border border-gray-300 hover:bg-pink-50 hover:border-pink-300"
-                                }`}>
-                                {d}
+                    {/* ── Day checkboxes — filtered by selected years ── */}
+                    {dateSummaryLoaded && (() => {
+                      const displayDays = selectedYears.length > 0
+                        ? Array.from(
+                            selectedYears.reduce((set, y) => {
+                              Object.values((availableMonths as Record<number, Record<string, number[]>>)[y] || {}).forEach((days) => {
+                                if (Array.isArray(days)) days.forEach(d => set.add(d));
+                              });
+                              return set;
+                            }, new Set<number>())
+                          ).sort((a, b) => a - b)
+                        : availableDays;
+                      if (displayDays.length === 0) return null;
+                      return (
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <label className="block text-sm font-medium text-gray-700">Day(s)</label>
+                            <div className="flex items-center gap-2">
+                              {selectedDays.length > 0 && (
+                                <button onClick={() => setSelectedDays([])} className="text-xs text-gray-400 hover:text-red-500">Clear</button>
+                              )}
+                              <button
+                                onClick={() => setSelectedDays(displayDays)}
+                                className="text-xs text-pink-600 hover:text-pink-800 font-medium">
+                                All
                               </button>
-                            );
-                          })}
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-7 gap-1">
+                            {displayDays.map(d => {
+                              const isSelected = selectedDays.includes(d);
+                              return (
+                                <button key={d}
+                                  onClick={() => isSelected
+                                    ? setSelectedDays(p => p.filter(x => x !== d))
+                                    : setSelectedDays(p => [...p, d])
+                                  }
+                                  className={`py-1.5 rounded text-xs font-semibold transition-all ${
+                                    isSelected
+                                      ? "bg-pink-600 text-white shadow-sm"
+                                      : "bg-white text-gray-700 border border-gray-300 hover:bg-pink-50 hover:border-pink-300"
+                                  }`}>
+                                  {d}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {selectedDays.length > 0 && (
+                            <p className="text-xs text-pink-600 mt-1">
+                              {selectedDays.length} day(s) selected: {selectedDays.sort((a, b) => a - b).join(", ")}
+                            </p>
+                          )}
                         </div>
-                        {selectedDays.length > 0 && (
-                          <p className="text-xs text-pink-600 mt-1">
-                            {selectedDays.length} day(s) selected: {selectedDays.sort((a,b) => a-b).join(", ")}
-                          </p>
-                        )}
-                      </div>
-                    )}
+                      );
+                    })()}
 
                     {/* Summary of selections */}
                     {dateSummaryLoaded && (selectedYears.length > 0 || selectedMonths.length > 0 || selectedDays.length > 0) && (

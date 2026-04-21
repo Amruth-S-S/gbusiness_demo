@@ -4,7 +4,7 @@ import './consultant.css'
 import loginImage from '../assets/logo.jpg';
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { User, Menu, X } from 'lucide-react';
+import { Settings, Menu, X } from 'lucide-react';
 
 interface UserData {
   email: string;
@@ -20,17 +20,17 @@ export default function Page() {
     const dropdownRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-    const userData = sessionStorage.getItem('currentUserData');
-    if (!userData) {
-      router.replace('/Login'); // kick back to login if no session
-    }
-  }, []);
+        const userData = sessionStorage.getItem('currentUserData');
+        if (!userData) {
+            router.replace('/Login');
+        }
+    }, []);
 
     const [userData, setUserData] = useState<UserData>({
-      email: "",
-      userId: "",
-      userRole: "",
-      userName: "",
+        email: "",
+        userId: "",
+        userRole: "",
+        userName: "",
     });
     const [isMounted, setIsMounted] = useState(false);
 
@@ -45,19 +45,19 @@ export default function Page() {
     };
 
     const handleLogout = () => {
+        sessionStorage.clear();
         router.push('/');
         setShowMobileMenu(false);
     };
 
-    const toggleDropdown = () => setShowDropdown(!showDropdown);
+    const toggleDropdown = () => setShowDropdown(p => !p);
 
     const toggleMobileMenu = () => {
-        setShowMobileMenu(!showMobileMenu);
-        if (!showMobileMenu) {
-            document.body.classList.add('mobile-menu-open');
-        } else {
-            document.body.classList.remove('mobile-menu-open');
-        }
+        setShowMobileMenu(p => {
+            if (!p) document.body.classList.add('mobile-menu-open');
+            else document.body.classList.remove('mobile-menu-open');
+            return !p;
+        });
     };
 
     useEffect(() => { setIsMounted(true); }, []);
@@ -114,115 +114,110 @@ export default function Page() {
     }, [showDropdown]);
 
     return (
-        <div>
-            <div className="min-h-screen flex flex-col bg-gray-100">
-                {/* Header */}
-                <header className="header-container">
-                    <div className="header-left">
-                        <div className="user-info-section">
-                            {/* Desktop User Info */}
-                            <div className="user-profile" onClick={toggleDropdown}>
-                                <User className="user-icon" />
-                                <span className="user-name">{userData.userName || "Guest"}</span>
-                            </div>
-
-                            {/* Desktop Nav Links */}
-                            <div className="nav-links">
-                                <a href="/Dashboard" className="nav-link">Consultant</a>
-                                <a href="/CXO" className="nav-link">CXO</a>
-                            </div>
-
-                            {/* Dropdown */}
-                            {showDropdown && (
-                                <div ref={dropdownRef} className="dropdown-menu">
-                                    <p className="dropdown-title">User Info</p>
-                                    <hr className="dropdown-divider" />
-                                    <p className="dropdown-info">Name: {userData.userName || "N/A"}</p>
-                                    <p className="dropdown-info">Email: {userData.email || "N/A"}</p>
-                                    <p className="dropdown-info">ID: {userData.userId || "N/A"}</p>
-                                    <p className="dropdown-info">Role: {userData.userRole || "N/A"}</p>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Desktop Logout */}
-                    <div>
-                        <button onClick={handleLogout} className="logout-button">Logout</button>
-                    </div>
-
-                    {/* Mobile Menu Button */}
-                    <button className="mobile-menu-button" onClick={toggleMobileMenu}>
-                        <Menu />
-                    </button>
-                </header>
-
-                {/* Mobile Navigation */}
-                <div className={`mobile-nav ${showMobileMenu ? 'active' : ''}`}>
-                    <div className="mobile-nav-content">
-                        <div className="mobile-nav-header">
-                            <span className="mobile-nav-title">Menu</span>
-                            <button className="mobile-nav-close" onClick={toggleMobileMenu}><X /></button>
-                        </div>
-                        <div className="mobile-user-info">
-                            <p><strong>Name:</strong> {userData.userName || "N/A"}</p>
-                            <p><strong>Email:</strong> {userData.email || "N/A"}</p>
-                            <p><strong>ID:</strong> {userData.userId || "N/A"}</p>
-                            <p><strong>Role:</strong> {userData.userRole || "N/A"}</p>
-                        </div>
-                        <div className="mobile-nav-links">
-                            <a href="/Dashboard" className="mobile-nav-link">Consultant</a>
-                            <a href="/CXO" className="mobile-nav-link">CXO</a>
-                        </div>
-                        <button onClick={handleLogout} className="mobile-logout-button">Logout</button>
-                    </div>
+        <div className="min-h-screen flex flex-col bg-gray-50">
+            {/* Navbar */}
+            <header className="consultant-navbar">
+                {/* Left: Logo */}
+                <div className="consultant-navbar-logo">
+                    <Image src={loginImage} alt="Logo" className="consultant-logo-img" />
                 </div>
 
-                {/* Main Content */}
-                <main className="main-content">
-                    {/* Logo */}
-                    <div className="logo-section">
-                        <div className="logo-container">
-                            <Image src={loginImage} alt="Login" className="logo" />
-                        </div>
-                    </div>
+                {/* Center: Nav links */}
+                <nav className="consultant-nav-links">
+                    <a href="/Dashboard" className="consultant-nav-link">Consultant</a>
+                    <a href="/CXO" className="consultant-nav-link">CXO</a>
+                </nav>
 
-                    {/* Cards */}
-                    <div className="cards-container">
-                        {/* Consultant Card */}
-                        <div className="card-wrapper">
-                            <div className="card" onClick={goToConsultantScreen}>
-                                <h2 className="card-title">Consultant</h2>
-                                <div className="card-icon">
-                                    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
-                                        <rect x="15" y="15" width="70" height="70" rx="10" fill="#C7D9FF" />
-                                        <circle cx="35" cy="45" r="10" fill="#4F7BFF" />
-                                        <circle cx="65" cy="45" r="10" fill="#4F7BFF" />
-                                        <rect x="25" y="60" width="50" height="20" rx="10" fill="#4F7BFF" />
-                                        <rect x="30" y="10" width="15" height="15" rx="2" fill="#4F7BFF" />
-                                        <rect x="55" y="10" width="15" height="15" rx="2" fill="#4F7BFF" />
-                                    </svg>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* CXO Card */}
-                        <div className="card-wrapper">
-                            <div className="card" onClick={goToCXOScreen}>
-                                <h2 className="card-title">CXO</h2>
-                                <div className="card-icon">
-                                    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
-                                        <circle cx="50" cy="35" r="15" fill="#4F7BFF" stroke="#C7F0E0" strokeWidth="4" />
-                                        <path d="M30 75 Q50 55 70 75" stroke="#C7F0E0" strokeWidth="4" fill="none" />
-                                        <rect x="35" y="50" width="30" height="35" rx="5" fill="#4F7BFF" />
-                                        <rect x="40" y="55" width="20" height="5" fill="white" />
-                                    </svg>
-                                </div>
-                            </div>
-                        </div>
+                {/* Right: User info + Settings */}
+                <div className="consultant-navbar-right" ref={dropdownRef}>
+                    <div className="consultant-user-info">
+                        <span className="consultant-user-name">{userData.userName || "Guest"}</span>
+                        <span className="consultant-user-email">{userData.email || ""}</span>
                     </div>
-                </main>
+                    <button className="consultant-settings-btn" onClick={toggleDropdown} title="Settings">
+                        <Settings size={18} />
+                    </button>
+
+                    {showDropdown && (
+                        <div className="consultant-settings-dropdown">
+                            <button className="consultant-logout-item" onClick={handleLogout}>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                                    <polyline points="16 17 21 12 16 7" />
+                                    <line x1="21" y1="12" x2="9" y2="12" />
+                                </svg>
+                                Logout
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Mobile menu button */}
+                    <button className="mobile-menu-button" onClick={toggleMobileMenu}>
+                        <Menu size={22} />
+                    </button>
+                </div>
+            </header>
+
+            {/* Mobile Navigation */}
+            <div className={`mobile-nav ${showMobileMenu ? 'active' : ''}`}>
+                <div className="mobile-nav-content">
+                    <div className="mobile-nav-header">
+                        <span className="mobile-nav-title">Menu</span>
+                        <button className="mobile-nav-close" onClick={toggleMobileMenu}><X /></button>
+                    </div>
+                    <div className="mobile-user-info">
+                        <p><strong>Name:</strong> {userData.userName || "N/A"}</p>
+                        <p><strong>Email:</strong> {userData.email || "N/A"}</p>
+                    </div>
+                    <div className="mobile-nav-links">
+                        <a href="/Dashboard" className="mobile-nav-link">Consultant</a>
+                        <a href="/CXO" className="mobile-nav-link">CXO</a>
+                    </div>
+                    <button onClick={handleLogout} className="mobile-logout-button">Logout</button>
+                </div>
             </div>
+
+            {/* Main Content */}
+            <main className="consultant-main">
+                {/* Large Logo */}
+                <div className="consultant-logo-section">
+                    <Image src={loginImage} alt="GBusiness AI" className="consultant-main-logo" />
+                </div>
+
+                {/* Cards */}
+                <div className="consultant-cards-container">
+                    {/* Consultant Card */}
+                    <div className="consultant-card" onClick={goToConsultantScreen}>
+                        <h2 className="consultant-card-title">Consultant</h2>
+                        <div className="consultant-card-icon">
+                            <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" width="90" height="90">
+                                <rect x="10" y="10" width="80" height="80" rx="12" fill="#dbeafe" />
+                                <circle cx="35" cy="42" r="11" fill="#3b82f6" />
+                                <circle cx="65" cy="42" r="11" fill="#3b82f6" />
+                                <rect x="22" y="58" width="56" height="22" rx="11" fill="#3b82f6" />
+                                <rect x="28" y="8" width="14" height="16" rx="3" fill="#3b82f6" />
+                                <rect x="58" y="8" width="14" height="16" rx="3" fill="#3b82f6" />
+                                <rect x="45" y="28" width="10" height="14" rx="2" fill="#93c5fd" />
+                            </svg>
+                        </div>
+                    </div>
+
+                    {/* CXO Card */}
+                    <div className="consultant-card" onClick={goToCXOScreen}>
+                        <h2 className="consultant-card-title">CXO</h2>
+                        <div className="consultant-card-icon">
+                            <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" width="90" height="90">
+                                <rect x="10" y="10" width="80" height="80" rx="12" fill="#d1fae5" />
+                                <circle cx="50" cy="32" r="13" fill="#10b981" stroke="#a7f3d0" strokeWidth="3" />
+                                <rect x="32" y="50" width="36" height="32" rx="6" fill="#10b981" />
+                                <rect x="38" y="56" width="24" height="5" rx="2" fill="white" />
+                                <circle cx="75" cy="28" r="10" fill="#34d399" />
+                                <path d="M70 28 l3 3 6-6" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+            </main>
         </div>
     );
 }

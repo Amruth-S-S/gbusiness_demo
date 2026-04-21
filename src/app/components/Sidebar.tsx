@@ -173,6 +173,7 @@ const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassw
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [customerDbOptions, setCustomerDbOptions] = useState<string[]>([]);
 
   const [confirmation, setConfirmation] = useState({ isOpen: false, message: '', boardId: '', mainBoardId: '' });
 
@@ -180,6 +181,42 @@ const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassw
   const EXCEL_API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
 
   const toggleDropdown = () => setIsDropdownOpen(!isDropdownOpen);
+
+  const fetchCustomerDbKeys = async () => {
+  try {
+    let userId = '';
+
+    if (typeof window !== 'undefined') {
+      const s = sessionStorage.getItem('currentUserData');
+      if (s) {
+        const d = JSON.parse(s);
+        userId = d.userId || d.user_id || d.id;
+      }
+    }
+
+    if (!userId) return;
+
+    const res = await fetch(
+      `${API_BASE_URL}/main-boards/boards/available-customer-dbs?user_id=${userId}`,
+      {
+        method: "GET",
+        headers: {
+          "accept": "application/json",
+          "X-API-Key": EXCEL_API_KEY
+        }
+      }
+    );
+
+    if (res.ok) {
+      const data = await res.json();
+      setCustomerDbOptions(data); // <-- important
+    } else {
+      console.error("Failed to fetch DB keys");
+    }
+  } catch (err) {
+    console.error("Error:", err);
+  }
+};
 
   // ─── Password Update ──────────────────────────────────────────────────────────
   const handlePasswordUpdate = async () => {
@@ -710,6 +747,7 @@ const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassw
     setNewBoardName(''); setCustomerDbKey('');
     setIsEditMode(false); setEditingBoardId(null);
     setShowModal(true);
+     fetchCustomerDbKeys(); 
   };
 
   // ─── Edit board click ────────────────────────────────────────────────────────
@@ -876,21 +914,33 @@ const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassw
         )}
 
         {/* ── Search bar ────────────────────────────────────────────────────── */}
-        <div className="px-3 pb-2">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 w-3.5 h-3.5" />
-            <input
-              ref={searchInputRef} type="text" placeholder="Search..."
-              value={searchQuery} onChange={handleSearchChange}
-              className="w-full py-2 pl-8 pr-8 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black bg-white shadow-sm transition-all duration-200"
-            />
-            {searchQuery && (
-              <button onClick={clearSearch} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full p-0.5 transition-all duration-200">
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
+        {(isSidebarOpen || isMobile) ? (
+          <div className="px-3 pb-2">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 w-3.5 h-3.5" />
+              <input
+                ref={searchInputRef} type="text" placeholder="Search..."
+                value={searchQuery} onChange={handleSearchChange}
+                className="w-full py-2 pl-8 pr-8 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black bg-white shadow-sm transition-all duration-200"
+              />
+              {searchQuery && (
+                <button onClick={clearSearch} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full p-0.5 transition-all duration-200">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="flex justify-center pb-2">
+            <button
+              onClick={toggleSidebar}
+              title="Search (expand sidebar)"
+              className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-200"
+            >
+              <Search className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
         {/* ── Navigation ────────────────────────────────────────────────────── */}
         <div className="flex-1 overflow-y-auto scrollbar-hide">
@@ -1222,14 +1272,18 @@ const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassw
   </label>
 
   <select
-    value={customerDbKey}
-    onChange={(e) => setCustomerDbKey(e.target.value)}
-    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
-  >
-    <option value="">Select database</option>
-     <option value="customer_db_ISC">customer_db_ISC</option>
-    <option value="customer_db_tally">customer_db_tally</option>
-  </select>
+  value={customerDbKey}
+  onChange={(e) => setCustomerDbKey(e.target.value)}
+  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+>
+  <option value="">Select database</option>
+
+  {customerDbOptions.map((db) => (
+    <option key={db} value={db}>
+      {db}
+    </option>
+  ))}
+</select>
 
   {/* <p className="mt-1 text-xs text-gray-500">
     Examples: customer_db_tally, customer_db_onegcp

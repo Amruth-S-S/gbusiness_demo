@@ -563,7 +563,7 @@ export default function Login() {
 
       case 'phone-verify':
         return (
-          <div style={{ padding: '35px 30px', textAlign: 'center', background: '#fff', borderRadius: '16px', boxShadow: '0 10px 25px rgba(0,0,0,0.08)', minWidth: '480px', maxWidth: '520px', margin: '0 auto' }}>
+          <div style={{ padding: '20px 15px', textAlign: 'center', background: '#fff', borderRadius: '16px', width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
             <h3 style={{ color: '#313b96', marginBottom: '8px', fontSize: '28px', fontWeight: '700' }}>Verify OTP</h3>
             <p style={{ color: '#6b7280', marginBottom: '35px', fontSize: '15px', lineHeight: '1.6' }}>Enter your email and the 6-digit code sent to your inbox</p>
             <form onSubmit={e => { e.preventDefault(); handleVerifyOtp(); }}>

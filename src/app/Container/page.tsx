@@ -504,7 +504,7 @@ useEffect(() => {
         }
       }
 
-      toast.success(`Data source deleted! ${data.remaining_sources} remaining.`);
+      toast.success(`Data source deleted! .`);
       await fetchDataSources();
       setDeleteDataSourceConfirm({ isOpen: false, source: null });
 
@@ -1960,36 +1960,9 @@ useEffect(() => {
         align: "center"
       });
 
-      // Add ONLY the current prompt that generated this result
-      // Option 1: If you have a currentPrompt variable that contains the executed prompt
-      if (typeof currentPromptId !== 'undefined' && currentPromptId) {
-        const cleanedPrompt = cleanPromptText(currentPromptId);
-        if (cleanedPrompt && cleanedPrompt.trim().length > 0) {
-          addTextAcrossSlides(cleanedPrompt, "Prompt Text");
-        }
-      }
-      // Option 2: If you need to get it from runResult or another source
-      else if (typeof selectedPrompt !== 'undefined' && selectedPrompt) {
-        const cleanedPrompt = cleanPromptText(selectedPrompt);
-        if (cleanedPrompt && cleanedPrompt.trim().length > 0) {
-          addTextAcrossSlides(cleanedPrompt, "Prompt Text");
-        }
-      }
-      // Option 3: If you store the current prompt in a different variable
-      else if (typeof selectedPrompt !== 'undefined' && selectedPrompt) {
-        const cleanedPrompt = cleanPromptText(selectedPrompt);
-        if (cleanedPrompt && cleanedPrompt.trim().length > 0) {
-          addTextAcrossSlides(cleanedPrompt, "Prompt Text");
-        }
-      }
-      // Option 4: Get the most recent prompt from the prompts array (if it's ordered by execution time)
-      else if (typeof prompts !== 'undefined' && prompts.length > 0) {
-        // Get the last prompt (most recently executed)
-        const mostRecentPrompt = prompts[prompts.length - 1];
-        const cleanedPrompt = cleanPromptText(mostRecentPrompt.prompt_text);
-        if (cleanedPrompt && cleanedPrompt.trim().length > 0) {
-          addTextAcrossSlides(cleanedPrompt, "Prompt Text");
-        }
+      // Add the current prompt text (the one typed in the input)
+      if (newPromptName && newPromptName.trim().length > 0) {
+        addTextAcrossSlides(newPromptName.trim(), "Prompt");
       }
 
       // Rest of your existing code for table data slides...
@@ -2276,122 +2249,101 @@ useEffect(() => {
       }
 
       // Add chart slides if available
-      if (runResult?.charts && runResult.charts.length > 0) {
-        const chartContainers = document.querySelectorAll('.chart-container');
-        runResult.charts.forEach((chart, index) => {
-          let slide = ppt.addSlide({ masterName: "CLEAN_MASTER_SLIDE" });
+     if (runResult?.charts && runResult.charts.length > 0) {
+  const chartsGrid = document.getElementById('modal-charts-grid');
+  const canvases = chartsGrid
+    ? chartsGrid.querySelectorAll("canvas")
+    : document.querySelectorAll("canvas");
 
-          // Add chart title
-          slide.addText(chart.chart_type.toUpperCase() + " Chart", {
+  runResult.charts.forEach((chart, index) => {
+    let slide = ppt.addSlide({ masterName: "CLEAN_MASTER_SLIDE" });
+
+    // ✅ Title
+    slide.addText(chart.chart_type.toUpperCase() + " Chart", {
+      x: 0.5,
+      y: 0.7,
+      fontSize: 20,
+      fontFace: "Arial",
+      color: THEME.primary,
+      bold: true,
+      align: "left"
+    });
+
+    // ✅ Chart Image
+    const canvas = canvases[index] as HTMLCanvasElement;
+
+    if (canvas) {
+      const imgData = canvas.toDataURL("image/png", 1.0);
+
+      slide.addImage({
+        data: imgData,
+        x: 0.5,
+        y: 1.3,
+        w: 4.5,
+        h: 3.5
+      });
+    } else {
+      // ✅ fallback if chart not found
+      slide.addText("Chart not available", {
+        x: 0.5,
+        y: 2,
+        fontSize: 14,
+        color: "FF0000"
+      });
+    }
+
+    // ✅ INSIGHTS (cleaned)
+    if (chart.insight?.length) {
+      slide.addText("Key Insights:", {
+        x: 5.5,
+        y: 1.3,
+        fontSize: 14,
+        fontFace: "Arial",
+        color: THEME.primary,
+        bold: true,
+      });
+
+      const maxInsights = Math.min(6, chart.insight.length);
+
+      chart.insight.slice(0, maxInsights).forEach((insight, i) => {
+        const text =
+          insight.length > 80 ? insight.substring(0, 77) + "..." : insight;
+
+        slide.addText(text, {
+          x: 5.5,
+          y: 1.7 + i * 0.4,
+          w: 3.5,
+          fontSize: 11,
+          bullet: true,
+          color: THEME.text,
+        });
+      });
+
+      // ✅ Extra slide for remaining insights
+      if (chart.insight.length > maxInsights) {
+        const extraSlide = ppt.addSlide({ masterName: "CLEAN_MASTER_SLIDE" });
+
+        extraSlide.addText("Additional Insights", {
+          x: 0.5,
+          y: 0.7,
+          fontSize: 20,
+          bold: true,
+          color: THEME.primary
+        });
+
+        chart.insight.slice(maxInsights).forEach((insight, i) => {
+          extraSlide.addText(insight, {
             x: 0.5,
-            y: 0.7,
-            fontSize: 20,
-            fontFace: "Arial",
-            color: THEME.primary,
-            bold: true,
-            align: "left"
+            y: 1.3 + i * 0.4,
+            w: 8.5,
+            fontSize: 12,
+            bullet: true,
           });
-
-          // Make chart image smaller to leave room for insights
-          if (chartContainers[index]) {
-            const canvas = chartContainers[index].querySelector('canvas');
-            if (canvas) {
-              let imgData = canvas.toDataURL("image/png", 1.0);
-              // Position chart on the left side, reduce width
-              slide.addImage({ data: imgData, x: 0.5, y: 1.3, w: 4.5, h: 3.5 });
-            }
-          }
-
-          // Add insights beside the chart (on the right side)
-          if (chart.insight && chart.insight.length) {
-            // Add title for insights section
-            slide.addText("Key Insights:", {
-              x: 5.5, // Position to the right of chart
-              y: 1.3,
-              fontSize: 14,
-              fontFace: "Arial",
-              color: THEME.primary,
-              bold: true,
-            });
-
-            // Calculate maximum insights that can fit
-            const maxInsightsOnSlide = Math.min(8, chart.insight.length);
-
-            // Add insights as a group with shorter height
-            for (let i = 0; i < maxInsightsOnSlide; i++) {
-              // Truncate long insights to prevent overflow
-              let insightText = chart.insight[i];
-              if (insightText.length > 80) {
-                insightText = insightText.substring(0, 77) + '...';
-              }
-
-              slide.addText(insightText, {
-                x: 5.5,
-                y: 1.7 + (i * 0.4), // More compact spacing
-                w: 3.5, // Fixed width to prevent overflow
-                h: 0.35, // Fixed height
-                fontSize: 11, // Smaller font size
-                fontFace: "Arial",
-                color: THEME.text,
-                bullet: { type: "bullet" },
-                wrap: true, // Enable text wrapping
-                breakLine: true // Break long lines
-              });
-            }
-
-            // If there are too many insights to fit, add pagination
-            if (chart.insight.length > maxInsightsOnSlide) {
-              slide.addText(`+ ${chart.insight.length - maxInsightsOnSlide} more insights`, {
-                x: 5.5,
-                y: 1.7 + (maxInsightsOnSlide * 0.4),
-                fontSize: 10,
-                fontFace: "Arial",
-                italic: true,
-                color: THEME.secondary,
-              });
-
-              // Create additional slides for remaining insights
-              const remainingInsights = chart.insight.slice(maxInsightsOnSlide);
-              const insightsPerAdditionalSlide = 12; // More insights on dedicated slides
-              const additionalSlidesNeeded = Math.ceil(remainingInsights.length / insightsPerAdditionalSlide);
-
-              for (let slideIdx = 0; slideIdx < additionalSlidesNeeded; slideIdx++) {
-                const insightStartIdx = slideIdx * insightsPerAdditionalSlide;
-                const insightEndIdx = Math.min(insightStartIdx + insightsPerAdditionalSlide, remainingInsights.length);
-                const currentInsights = remainingInsights.slice(insightStartIdx, insightEndIdx);
-
-                const additionalSlide = ppt.addSlide({ masterName: "CLEAN_MASTER_SLIDE" });
-
-                additionalSlide.addText(`${chart.chart_type.toUpperCase()} Chart - Additional Insights (${slideIdx + 1}/${additionalSlidesNeeded})`, {
-                  x: 0.5,
-                  y: 0.7,
-                  fontSize: 20,
-                  fontFace: "Arial",
-                  color: THEME.primary,
-                  bold: true,
-                  align: "left"
-                });
-
-                // Add all remaining insights on additional slides
-                currentInsights.forEach((insight, idx) => {
-                  additionalSlide.addText(insight, {
-                    x: 0.5,
-                    y: 1.3 + (idx * 0.4),
-                    w: 8.5,
-                    h: 0.35,
-                    fontSize: 12,
-                    fontFace: "Arial",
-                    color: THEME.text,
-                    bullet: { type: "bullet" },
-                    wrap: true,
-                    breakLine: true
-                  });
-                });
-              }
-            }
-          }
         });
       }
+    }
+  });
+}
 
       // Generate proper filename based on options
       let fileName = "Analysis_Report";
@@ -2995,6 +2947,25 @@ useEffect(() => {
         // console.log("Fetched prompts data:", data);
 
         setPrompts(data);
+
+        // Auto-fetch comment counts for all prompts so badges show immediately
+        const commentEntries = await Promise.all(
+          data.map(async (p: Prompt) => {
+            try {
+              const res = await fetch(
+                `${API_BASE_URL}/main-boards/boards/prompts/${p.id}/comments?order_by=created_at&order_dir=DESC`,
+                { headers: { "Content-Type": "application/json", "X-API-Key": EXCEL_API_KEY } }
+              );
+              if (!res.ok) return [p.id, []];
+              const cData = await res.json();
+              const comments: PromptComment[] = Array.isArray(cData) ? cData : cData.comments || [];
+              return [p.id, comments];
+            } catch {
+              return [p.id, []];
+            }
+          })
+        );
+        setCommentsMap(Object.fromEntries(commentEntries));
       } catch (error) {
         setError(error instanceof Error ? error.message : "An unknown error occurred");
         console.error("Error fetching prompts:", error);
@@ -3048,13 +3019,13 @@ useEffect(() => {
   if (outputType) {
     setPromptOutputTypes(prev => ({ ...prev, [promptId]: outputType }));
   }
-  setPromptRunInfo(prev => ({
-    ...prev,
-    [promptId]: {
-      sourceName: response.data.source_name ?? null,
-      filteredVersion: response.data.filtered_version ?? null,
-    }
-  }));
+  // setPromptRunInfo(prev => ({
+  //   ...prev,
+  //   [promptId]: {
+  //     sourceName: response.data.source_name ?? null,
+  //     filteredVersion: response.data.filtered_version ?? null,
+  //   }
+  // }));
 }
 
         return response.data; // ✅ return the actual data
@@ -3957,7 +3928,13 @@ useEffect(() => {
                   {/* Buttons */}
                   <button
                     className="py-1.5 px-3 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors text-xs font-medium whitespace-nowrap"
-                    onClick={() => setIsModalOpen(true)}
+                    onClick={() => {
+                      setIsRunClicked(false);
+                      setRunResult(null);
+                      setNewPromptName('');
+                      setActiveTab('message');
+                      setIsModalOpen(true);
+                    }}
                   >
                     New Prompts +
                   </button>
@@ -4430,47 +4407,59 @@ useEffect(() => {
         )} */}
 
         {isResultModalOpen && runResult && (
-          <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
-            <div className="bg-white p-6 rounded-lg shadow-lg w-full h-full max-w-full relative overflow-y-auto">
+          <div
+            id="result-modal-scroll"
+            className="fixed inset-0 z-50 bg-white overflow-y-auto"
+            style={{scrollbarWidth:'thin', scrollbarColor:'#313b96 #f1f1f1'}}
+          >
+            <div className="w-full p-4 relative max-w-screen-xl mx-auto">
               <div className="result-modal">
                 <div className="result-modal-content">
-                  <span
-                    className="close-btn absolute top-2 right-2 cursor-pointer text-2xl text-gray-600"
-                    onClick={() => {
-                      setIsResultModalOpen(false); // Close the modal
-                      setActiveTab("prompts"); // Switch back to the "prompts" tab
-                    }}
+                  {/* Header row */}
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-base font-semibold">Prompt</h3>
+                    <span
+                      className="close-btn cursor-pointer text-xl text-gray-500 hover:text-gray-800 leading-none"
+                      onClick={() => {
+                        setIsResultModalOpen(false);
+                        setActiveTab("prompts");
+                      }}
+                    >
+                      &times;
+                    </span>
+                  </div>
 
-
-                  >
-                    &times;
-                  </span>
-
-                  <h3 className="text-xl font-semibold mb-4">Prompt</h3>
                   <textarea
-                    value={selectedPrompt || ""} // Display the selected prompt text
+                    value={selectedPrompt || ""}
                     readOnly
-                    rows={7}
-                    className="w-full p-2 border border-gray-300 rounded"
+                    rows={3}
+                    className="w-full p-2 border border-gray-300 rounded text-sm resize-none"
                   />
-
-                  <h3 className="text-xl font-semibold mt-6">Run Result</h3>
-                  <div className="run-results mt-6">
-                    {/* Tab buttons for navigation */}
-                    <div className="tabs flex justify-end space-x-2 mb-4">
-                      {['message', 'table', 'charts'].map((tab) => (
+<br></br>
+<br></br>
+                  {/* <h3 className="text-base font-semibold mt-4 mb-2">Run Result</h3> */}
+                  <div className="run-results">
+                    {/* Tab buttons + Download Excel in one row */}
+                    <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                      <div className="tabs flex space-x-2">
+                        {['message', 'table', 'charts'].map((tab) => (
+                          <button
+                            key={tab}
+                            onClick={() => { setActiveTab(tab); setIsResultModalOpen(true); }}
+                            className={`tab-button px-3 py-1.5 text-sm rounded ${activeTab === tab ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700'}`}
+                          >
+                            {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                          </button>
+                        ))}
+                      </div>
+                      {activeTab === 'table' && runResult?.table && runResult.table.columns?.length > 0 && (
                         <button
-                          key={tab}
-                          onClick={() => {
-                            setActiveTab(tab);
-                            setIsResultModalOpen(true); // Open modal only for the active tab
-                          }}
-
-                          className={`tab-button px-4 py-2 rounded ${activeTab === tab ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700'}`}
+                          onClick={downloadExcel}
+                          className="px-3 py-1.5 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
                         >
-                          {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                          Download as Excel
                         </button>
-                      ))}
+                      )}
                     </div>
 
                     {/* Tab Content */}
@@ -4494,24 +4483,14 @@ useEffect(() => {
                      {activeTab === 'table' && (
                         <div className="table-tab">
                           {runResult?.table && runResult.table.columns?.length > 0 ? (
-                            <div className="mt-4">
-
-                              {/* Download Excel Button */}
-                              <div className="flex justify-end">
-                                <button
-                                  onClick={downloadExcel}
-                                  className="mb-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-                                >
-                                  Download as Excel
-                                </button>
-                              </div>
+                            <div>
                               {/* <h4 className="font-medium text-lg">Table Data:</h4> */}
-                              <div className="max-h-94 overflow-y-auto border border-gray-300 rounded">
-                                <table className="min-w-full table-auto">
-                                  <thead>
+                              <div className="max-h-96 overflow-y-auto overflow-x-auto border border-gray-300 rounded" style={{scrollbarWidth:'thin', scrollbarColor:'#313b96 #f1f1f1'}}>
+                                <table className="min-w-full table-auto whitespace-nowrap">
+                                  <thead className="bg-gray-100 sticky top-0">
                                     <tr>
                                       {runResult.table.columns.map((col, idx) => (
-                                        <th key={`col-header-${idx}-${col}`} className="p-2 border-b text-left">
+                                        <th key={`col-header-${idx}-${col}`} className="p-2 border-b border-gray-300 text-left text-sm font-semibold text-gray-700">
                                           {col}
                                         </th>
                                       ))}
@@ -4783,23 +4762,21 @@ useEffect(() => {
                                   switch (chart.chart_type) {
                                     case 'pie':
                                       return (
-                                        <div key={`pie-chart-${index}`} className="w-full max-w-[400px] flex-1 chart-container">
-                                          <h5 className="text-lg font-semibold text-center">Pie Chart</h5>
-                                          <div style={{ height: "400px" }}>
+                                        <div key={`pie-chart-${index}`} className="w-full max-w-[400px] flex-1 bg-white rounded-xl shadow-sm p-4 border border-gray-200">
+                                          <h5 className="text-sm font-semibold text-center text-gray-800 mb-3">Pie Chart</h5>
+                                          <div style={{ height: '300px', position: 'relative' }}>
                                             <Pie data={getPieData(chart)}
                                               options={{
                                                 maintainAspectRatio: false,
-                                                plugins: { legend: { display: true, position: "top" } }
+                                                plugins: { legend: { display: true, position: 'top', labels: { font: { size: 11 }, boxWidth: 12 } } }
                                               }}
                                             />
                                           </div>
-                                          <div className="mt-4 p-4 bg-gray-100 rounded-lg">
-                                            <h6 className="text-md font-semibold mb-2">Insights:</h6>
+                                          <div className="mt-3 p-3 bg-blue-50 rounded-lg border-l-4 border-blue-400">
+                                            <p className="text-xs font-semibold text-gray-700 mb-1">Insights:</p>
                                             <ul className="list-disc list-inside">
                                               {chart.insight && chart.insight.map((insight, insightIndex) => (
-                                                <li key={`pie-insight-${index}-${insightIndex}`} className="text-sm">
-                                                  {insight}
-                                                </li>
+                                                <li key={`pie-insight-${index}-${insightIndex}`} className="text-xs text-gray-600">{insight}</li>
                                               ))}
                                             </ul>
                                           </div>
@@ -4807,25 +4784,26 @@ useEffect(() => {
                                       );
                                     case 'bar':
                                       return (
-                                        <div key={`bar-chart-${index}`} className="w-full max-w-[500px] flex-1 chart-container">
-                                          <h5 className="text-lg font-semibold text-center">Bar Chart</h5>
-                                          <div style={{ height: "400px" }}>
+                                        <div key={`bar-chart-${index}`} className="w-full max-w-[500px] flex-1 bg-white rounded-xl shadow-sm p-4 border border-gray-200">
+                                          <h5 className="text-sm font-semibold text-center text-gray-800 mb-3">Bar Chart</h5>
+                                          <div style={{ height: '350px', position: 'relative' }}>
                                             <Bar
                                               data={getChartData(chart, 'bar')}
                                               options={{
                                                 maintainAspectRatio: false,
-                                                plugins: { legend: { display: true, position: "top" } },
-                                                scales: { y: { beginAtZero: true } },
+                                                plugins: { legend: { display: true, position: 'top', labels: { font: { size: 11 }, boxWidth: 12 } } },
+                                                scales: {
+                                                  y: { beginAtZero: true, ticks: { font: { size: 11 } }, grid: { color: '#f0f0f0' } },
+                                                  x: { ticks: { font: { size: 10 }, maxRotation: 45, autoSkip: true }, grid: { display: false } }
+                                                }
                                               }}
                                             />
                                           </div>
-                                          <div className="mt-4 p-4 bg-gray-100 rounded-lg">
-                                            <h6 className="text-md font-semibold mb-2">Insights:</h6>
+                                          <div className="mt-3 p-3 bg-blue-50 rounded-lg border-l-4 border-blue-400">
+                                            <p className="text-xs font-semibold text-gray-700 mb-1">Insights:</p>
                                             <ul className="list-disc list-inside">
                                               {chart.insight && chart.insight.map((insight, insightIndex) => (
-                                                <li key={`bar-insight-${index}-${insightIndex}`} className="text-sm">
-                                                  {insight}
-                                                </li>
+                                                <li key={`bar-insight-${index}-${insightIndex}`} className="text-xs text-gray-600">{insight}</li>
                                               ))}
                                             </ul>
                                           </div>
@@ -4833,25 +4811,26 @@ useEffect(() => {
                                       );
                                     case 'line':
                                       return (
-                                        <div key={`line-chart-${index}`} className="w-full max-w-[500px] flex-1 chart-container">
-                                          <h5 className="text-lg font-semibold text-center">Line Chart</h5>
-                                          <div style={{ height: "400px" }}>
+                                        <div key={`line-chart-${index}`} className="w-full max-w-[500px] flex-1 bg-white rounded-xl shadow-sm p-4 border border-gray-200">
+                                          <h5 className="text-sm font-semibold text-center text-gray-800 mb-3">Line Chart</h5>
+                                          <div style={{ height: '350px', position: 'relative' }}>
                                             <Line
                                               data={getChartData(chart, 'line')}
                                               options={{
                                                 maintainAspectRatio: false,
-                                                plugins: { legend: { display: true, position: "top" } },
-                                                scales: { y: { beginAtZero: true } },
+                                                plugins: { legend: { display: true, position: 'top', labels: { font: { size: 11 }, boxWidth: 12 } } },
+                                                scales: {
+                                                  y: { beginAtZero: true, ticks: { font: { size: 11 } }, grid: { color: '#f0f0f0' } },
+                                                  x: { ticks: { font: { size: 10 }, maxRotation: 45, autoSkip: true }, grid: { display: false } }
+                                                }
                                               }}
                                             />
                                           </div>
-                                          <div className="mt-4 p-4 bg-gray-100 rounded-lg">
-                                            <h6 className="text-md font-semibold mb-2">Insights:</h6>
+                                          <div className="mt-3 p-3 bg-blue-50 rounded-lg border-l-4 border-blue-400">
+                                            <p className="text-xs font-semibold text-gray-700 mb-1">Insights:</p>
                                             <ul className="list-disc list-inside">
                                               {chart.insight && chart.insight.map((insight, insightIndex) => (
-                                                <li key={`line-insight-${index}-${insightIndex}`} className="text-sm">
-                                                  {insight}
-                                                </li>
+                                                <li key={`line-insight-${index}-${insightIndex}`} className="text-xs text-gray-600">{insight}</li>
                                               ))}
                                             </ul>
                                           </div>
@@ -4885,6 +4864,17 @@ useEffect(() => {
                   </div>
                 </div>
               </div>
+
+              {/* Scroll to Top button */}
+              <button
+                onClick={() => {
+                  const el = document.getElementById('result-modal-scroll');
+                  if (el) el.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className="fixed bottom-6 right-6 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2 rounded-full shadow-lg z-[60] transition-all"
+              >
+                ↑ Top
+              </button>
             </div>
           </div>
 
@@ -5328,7 +5318,7 @@ useEffect(() => {
                           &nbsp;·&nbsp;
                           <span className="font-medium">{pgDbInfo.table_count}</span> tables
                           &nbsp;·&nbsp;
-                          <span className="text-blue-600 font-medium">Click row to add</span>
+                          <span className="text-blue-600 font-medium">Click +Add to Insert</span>
                         </p>
                       )}
                     </div>
@@ -5974,7 +5964,7 @@ useEffect(() => {
             </div>
 
             {/* ── Scrollable Body ── */}
-            <div className="flex-1 overflow-y-auto px-4 py-3">
+            <div id="run-prompt-scroll" className="flex-1 overflow-y-auto px-4 py-3" style={{scrollbarWidth:'thin', scrollbarColor:'#313b96 #f1f1f1'}}>
 
               {/* Textarea */}
               <textarea
@@ -6028,13 +6018,13 @@ useEffect(() => {
               {isRunClicked && runResult && (
                 <div className="mt-3">
 
-                  {/* Result Tab buttons */}
-                  <div className="flex justify-end gap-1.5 mb-2">
+                  {/* All buttons in one single row */}
+                  <div className="flex items-center gap-2 mb-2 w-full">
                     {['message', 'table', 'charts'].map((tab) => (
                       <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}
-                        className={`px-3 py-1 rounded text-xs font-medium transition-colors ${activeTab === tab
+                        className={`px-3 py-1 rounded text-xs font-medium transition-colors whitespace-nowrap ${activeTab === tab
                           ? 'bg-blue-500 text-white'
                           : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                           }`}
@@ -6042,6 +6032,24 @@ useEffect(() => {
                         {tab.charAt(0).toUpperCase() + tab.slice(1)}
                       </button>
                     ))}
+                    <div className="ml-auto flex gap-2">
+                      {activeTab === 'table' && runResult?.table && runResult.table.columns?.length > 0 && (
+                        <button
+                          onClick={downloadExcel}
+                          className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-xs font-medium whitespace-nowrap"
+                        >
+                          Download as Excel
+                        </button>
+                      )}
+                      {activeTab === 'charts' && (runResult?.charts ?? []).length > 0 && (
+                        <button
+                          onClick={() => setShowDownloadModal(true)}
+                          className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-xs font-medium whitespace-nowrap"
+                        >
+                          Download as PPT
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {/* Tab Content */}
@@ -6068,24 +6076,13 @@ useEffect(() => {
                  {activeTab === 'table' && (
                         <div className="table-tab">
                           {runResult?.table && runResult.table.columns?.length > 0 ? (
-                            <div className="mt-4">
-
-                              {/* Download Excel Button */}
-                              <div className="flex justify-end">
-                                <button
-                                  onClick={downloadExcel}
-                                  className="mb-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-                                >
-                                  Download as Excel
-                                </button>
-                              </div>
-                              {/* <h4 className="font-medium text-lg">Table Data:</h4> */}
-                              <div className="max-h-94 overflow-y-auto border border-gray-300 rounded">
-                                <table className="min-w-full table-auto">
-                                  <thead>
+                            <div>
+                              <div className="overflow-x-auto overflow-y-auto max-h-96 border border-gray-300 rounded" style={{scrollbarWidth:'thin', scrollbarColor:'#313b96 #f1f1f1'}}>
+                                <table className="min-w-full table-auto whitespace-nowrap">
+                                  <thead className="bg-gray-100 sticky top-0">
                                     <tr>
                                       {runResult.table.columns.map((col, idx) => (
-                                        <th key={`col-header-${idx}-${col}`} className="p-2 border-b text-left">
+                                        <th key={`col-header-${idx}-${col}`} className="p-2 border-b border-gray-300 text-left text-sm font-semibold text-gray-700">
                                           {col}
                                         </th>
                                       ))}
@@ -6133,14 +6130,7 @@ useEffect(() => {
                         <div className="charts-tab">
                           {(runResult?.charts ?? []).length > 0 ? (
                             <>
-
-                              <div className="flex justify-end">
-                                <button
-                                  onClick={() => setShowDownloadModal(true)}
-                                  className="mb-4 px-4 py-2 bg-blue-500 text-white rounded-md"
-                                >
-                                  Download as PPT
-                                </button>
+                              <div>
                                 {showDownloadModal && (
                                   <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
                                     <div className="bg-white p-6 rounded-lg shadow-xl max-w-md w-full">
@@ -6350,86 +6340,38 @@ useEffect(() => {
                                   </div>
                                 )}
                               </div>
-                              {/* <p className="text-center">Charts will be displayed here.</p> */}
-
-                              {/* Flex container for charts */}
-                              <div className="my-4 flex flex-wrap justify-center gap-6">
+                              {/* Charts grid compact */}
+                              <div id="modal-charts-grid" className="mt-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                                 {runResult.charts && runResult.charts.map((chart: ChartData, index: number) => {
                                   switch (chart.chart_type) {
                                     case 'pie':
                                       return (
-                                        <div key={`pie-chart-${index}`} className="w-full max-w-[400px] flex-1 chart-container">
-                                          <h5 className="text-lg font-semibold text-center">Pie Chart</h5>
-                                          <div style={{ height: "400px" }}>
-                                            <Pie data={getPieData(chart)}
-                                              options={{
-                                                maintainAspectRatio: false,
-                                                plugins: { legend: { display: true, position: "top" } }
-                                              }}
-                                            />
+                                        <div key={`pie-${index}`} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col">
+                                          <h5 className="text-sm font-semibold text-center text-gray-800 mb-3">Pie Chart</h5>
+                                          <div style={{ height: '350px', position: 'relative' }}>
+                                            <Pie data={getPieData(chart)} options={{ maintainAspectRatio: false, plugins: { legend: { display: true, position: 'top', labels: { font: { size: 11 }, boxWidth: 12 } } } }} />
                                           </div>
-                                          <div className="mt-4 p-4 bg-gray-100 rounded-lg">
-                                            <h6 className="text-md font-semibold mb-2">Insights:</h6>
-                                            <ul className="list-disc list-inside">
-                                              {chart.insight && chart.insight.map((insight, insightIndex) => (
-                                                <li key={`pie-insight-${index}-${insightIndex}`} className="text-sm">
-                                                  {insight}
-                                                </li>
-                                              ))}
-                                            </ul>
-                                          </div>
+                                          {chart.insight && chart.insight.length > 0 && (<div className="mt-3 p-2 bg-blue-50 rounded-lg text-xs text-gray-600 border-l-4 border-blue-400"><p className="font-semibold mb-1">Insights:</p><ul className="list-disc list-inside">{chart.insight.map((ins, i) => <li key={i}>{ins}</li>)}</ul></div>)}
                                         </div>
                                       );
                                     case 'bar':
                                       return (
-                                        <div key={`bar-chart-${index}`} className="w-full max-w-[500px] flex-1 chart-container">
-                                          <h5 className="text-lg font-semibold text-center">Bar Chart</h5>
-                                          <div style={{ height: "400px" }}>
-                                            <Bar
-                                              data={getChartData(chart, 'bar')}
-                                              options={{
-                                                maintainAspectRatio: false,
-                                                plugins: { legend: { display: true, position: "top" } },
-                                                scales: { y: { beginAtZero: true } },
-                                              }}
-                                            />
+                                        <div key={`bar-${index}`} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col">
+                                          <h5 className="text-sm font-semibold text-center text-gray-800 mb-3">Bar Chart</h5>
+                                          <div style={{ height: '350px', position: 'relative' }}>
+                                            <Bar data={getChartData(chart, 'bar')} options={{ maintainAspectRatio: false, plugins: { legend: { display: true, position: 'top', labels: { font: { size: 11 }, boxWidth: 12 } } }, scales: { y: { beginAtZero: true, ticks: { font: { size: 11 } }, grid: { color: '#f0f0f0' } }, x: { ticks: { font: { size: 10 }, maxRotation: 45, autoSkip: true }, grid: { display: false } } } }} />
                                           </div>
-                                          <div className="mt-4 p-4 bg-gray-100 rounded-lg">
-                                            <h6 className="text-md font-semibold mb-2">Insights:</h6>
-                                            <ul className="list-disc list-inside">
-                                              {chart.insight && chart.insight.map((insight, insightIndex) => (
-                                                <li key={`bar-insight-${index}-${insightIndex}`} className="text-sm">
-                                                  {insight}
-                                                </li>
-                                              ))}
-                                            </ul>
-                                          </div>
+                                          {chart.insight && chart.insight.length > 0 && (<div className="mt-3 p-2 bg-blue-50 rounded-lg text-xs text-gray-600 border-l-4 border-blue-400"><p className="font-semibold mb-1">Insights:</p><ul className="list-disc list-inside">{chart.insight.map((ins, i) => <li key={i}>{ins}</li>)}</ul></div>)}
                                         </div>
                                       );
                                     case 'line':
                                       return (
-                                        <div key={`line-chart-${index}`} className="w-full max-w-[500px] flex-1 chart-container">
-                                          <h5 className="text-lg font-semibold text-center">Line Chart</h5>
-                                          <div style={{ height: "400px" }}>
-                                            <Line
-                                              data={getChartData(chart, 'line')}
-                                              options={{
-                                                maintainAspectRatio: false,
-                                                plugins: { legend: { display: true, position: "top" } },
-                                                scales: { y: { beginAtZero: true } },
-                                              }}
-                                            />
+                                        <div key={`line-${index}`} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col">
+                                          <h5 className="text-sm font-semibold text-center text-gray-800 mb-3">Line Chart</h5>
+                                          <div style={{ height: '350px', position: 'relative' }}>
+                                            <Line data={getChartData(chart, 'line')} options={{ maintainAspectRatio: false, plugins: { legend: { display: true, position: 'top', labels: { font: { size: 11 }, boxWidth: 12 } } }, scales: { y: { beginAtZero: true, ticks: { font: { size: 11 } }, grid: { color: '#f0f0f0' } }, x: { ticks: { font: { size: 10 }, maxRotation: 45, autoSkip: true }, grid: { display: false } } } }} />
                                           </div>
-                                          <div className="mt-4 p-4 bg-gray-100 rounded-lg">
-                                            <h6 className="text-md font-semibold mb-2">Insights:</h6>
-                                            <ul className="list-disc list-inside">
-                                              {chart.insight && chart.insight.map((insight, insightIndex) => (
-                                                <li key={`line-insight-${index}-${insightIndex}`} className="text-sm">
-                                                  {insight}
-                                                </li>
-                                              ))}
-                                            </ul>
-                                          </div>
+                                          {chart.insight && chart.insight.length > 0 && (<div className="mt-3 p-2 bg-blue-50 rounded-lg text-xs text-gray-600 border-l-4 border-blue-400"><p className="font-semibold mb-1">Insights:</p><ul className="list-disc list-inside">{chart.insight.map((ins, i) => <li key={i}>{ins}</li>)}</ul></div>)}
                                         </div>
                                       );
                                     default:
@@ -6453,6 +6395,21 @@ useEffect(() => {
                       )}
 
                   </div>
+                </div>
+              )}
+
+              {/* ↑ Top button — only when there are results */}
+              {isRunClicked && runResult && (
+                <div className="flex justify-end mt-4 pb-2">
+                  <button
+                    onClick={() => {
+                      const el = document.getElementById('run-prompt-scroll');
+                      if (el) el.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                    className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2 rounded-full shadow transition-all"
+                  >
+                    ↑ Top
+                  </button>
                 </div>
               )}
             </div>
@@ -6541,149 +6498,96 @@ useEffect(() => {
 
         {/* Prompts Modal (Second Modal) */}
         {showPromptsModal && (
-          <div className={styles.modalOverlay}>
-            <div className={`${styles.promptsModal} ${styles.slideInLeft}`}>
-              <div className={styles.modalHeader}>
+          <>
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 bg-black bg-opacity-30 z-[70]"
+              onClick={handleClosePromptsModal}
+            />
+            {/* Right-side drawer */}
+            <div className="fixed top-0 right-0 h-full w-72 bg-white shadow-2xl z-[80] flex flex-col">
+              {/* Header */}
+              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+                <span className="font-semibold text-sm text-gray-800">View Prompts</span>
                 <button
-                  className={styles.closeButton}
                   onClick={handleClosePromptsModal}
+                  className="text-gray-400 hover:text-gray-700 text-xl leading-none"
                 >
                   ×
                 </button>
               </div>
-              <div className={styles.modalContent}>
-                <div className={styles.searchContainer}>
+
+              {/* Search */}
+              <div className="px-3 py-2 border-b border-gray-100">
+                <div className="relative">
                   <input
                     type="text"
                     placeholder="Search prompts..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className={styles.searchInput}
+                    className="w-full pl-3 pr-7 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400"
                   />
                   {searchTerm && (
                     <button
                       onClick={() => setSearchTerm('')}
-                      className={styles.clearSearchButton}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-lg leading-none"
                     >
                       ×
                     </button>
                   )}
                 </div>
+              </div>
 
+              {/* Prompt list */}
+              <div className="flex-1 overflow-y-auto px-3 py-2" style={{scrollbarWidth:'thin', scrollbarColor:'#313b96 #f1f1f1'}}>
                 {promptsLoading ? (
-                  <div className={styles.loadingOverlay}>
-                    <div className={styles.spinner}></div>
-                  </div>
+                  <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" /></div>
                 ) : error ? (
-                  <div className={styles.error}>{error}</div>
-                ) : filteredPrompt.length === 0 ? (
-                  <div className={styles.noResults}>
-                    {searchTerm
-                      ? `No prompts found for "${searchTerm}"`
-                      : 'No prompts found for this board.'}
-                    {searchTerm && (
-                      <button
-                        onClick={() => setSearchTerm('')}
-                        className={styles.clearSearchLink}
-                      >
-                        Clear search
-                      </button>
-                    )}
+                  <p className="text-xs text-red-500 p-2">{error}</p>
+                ) : filteredPrompts.length === 0 ? (
+                  <div className="text-center py-8 text-xs text-gray-500">
+                    {searchTerm ? `No prompts found for "${searchTerm}"` : 'No prompts found for this board.'}
+                    {searchTerm && <button onClick={() => setSearchTerm('')} className="block mx-auto mt-2 text-blue-500 underline">Clear search</button>}
                   </div>
                 ) : (
-                  <div className={styles.promptContainer}>
+                  <>
                     {searchTerm && (
-                      <div className={styles.searchResultsInfo}>
-                        <span>
-                          Found {filteredPrompt.length} prompt
-                          {filteredPrompt.length !== 1 ? 's' : ''} for "{searchTerm}"
-                        </span>
-                        <button
-                          onClick={() => setSearchTerm('')}
-                          className={styles.clearSearchLink}
-                        >
-                          Clear search
-                        </button>
+                      <div className="flex justify-between items-center mb-2 text-xs text-gray-500">
+                        <span>Found {filteredPrompts.length} prompt{filteredPrompts.length !== 1 ? 's' : ''}</span>
+                        <button onClick={() => setSearchTerm('')} className="text-blue-500 underline">Clear</button>
                       </div>
                     )}
-
-                    <div className={styles.scrollablePrompts}>
-                      {filteredPrompts.map((prompt, index) => {
-                        // ✅ FIX: Use promptOutputTypes state (runtime), not prompt.output_type (API field which is empty)
-                        const outputType = promptOutputTypes[prompt.id];
-
-                        return (
-                          <div
-                            key={prompt.id || index}
-                            className={styles.promptCard}
-                            onClick={() => handlePromptClick(prompt)}
-                          >
-                            {/* Header row: number + badge */}
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                              <div className={styles.promptNumber}>
-                                {index + 1}.
+                    {filteredPrompts.map((prompt, index) => {
+                      const outputType = promptOutputTypes[prompt.id];
+                      return (
+                        <div
+                          key={prompt.id || index}
+                          onClick={() => handlePromptClick(prompt)}
+                          className="mb-2 p-3 bg-white border border-gray-200 rounded-lg cursor-pointer hover:border-blue-400 hover:shadow-sm transition-all"
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs font-bold text-blue-600">{index + 1}.</span>
+                            {outputType && (
+                              <div className="flex gap-1">
+                                {(outputType === 'C' || outputType === 'CT') && (
+                                  <span className="w-5 h-5 rounded-full bg-purple-100 text-purple-700 text-[10px] font-bold flex items-center justify-center border border-purple-300" title="Charts">C</span>
+                                )}
+                                {(outputType === 'T' || outputType === 'CT') && (
+                                  <span className="w-5 h-5 rounded-full bg-green-50 text-green-700 text-[10px] font-bold flex items-center justify-center border border-green-300" title="Table">T</span>
+                                )}
                               </div>
-
-                              {/* ✅ C/T badges — same as Manage Prompts tab */}
-                              {outputType && (
-                                <div style={{ display: 'flex', gap: '4px' }}>
-                                  {(outputType === 'C' || outputType === 'CT') && (
-                                    <span
-                                      style={{
-                                        width: '20px',
-                                        height: '20px',
-                                        borderRadius: '50%',
-                                        backgroundColor: '#f3e8ff',
-                                        color: '#7e22ce',
-                                        fontSize: '10px',
-                                        fontWeight: 700,
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        border: '1px solid #d8b4fe',
-                                        flexShrink: 0,
-                                      }}
-                                      title="This prompt produces Charts"
-                                    >
-                                      C
-                                    </span>
-                                  )}
-                                  {(outputType === 'T' || outputType === 'CT') && (
-                                    <span
-                                      style={{
-                                        width: '20px',
-                                        height: '20px',
-                                        borderRadius: '50%',
-                                        backgroundColor: '#f0fdf4',
-                                        color: '#15803d',
-                                        fontSize: '10px',
-                                        fontWeight: 700,
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        border: '1px solid #86efac',
-                                        flexShrink: 0,
-                                      }}
-                                      title="This prompt produces a Table"
-                                    >
-                                      T
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-
-                            <h4>{prompt.prompt_title}</h4>
-                            <p>{prompt.prompt_text}</p>
+                            )}
                           </div>
-                        );
-                      })}
-                    </div>
-                  </div>
+                          {prompt.prompt_title && <p className="text-xs font-medium text-gray-700 mb-0.5">{prompt.prompt_title}</p>}
+                          <p className="text-xs text-gray-500 line-clamp-2">{prompt.prompt_text}</p>
+                        </div>
+                      );
+                    })}
+                  </>
                 )}
               </div>
             </div>
-          </div>
+          </>
         )}
 
         {activeTab === "timeline" && (

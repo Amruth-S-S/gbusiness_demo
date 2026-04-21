@@ -1,7 +1,7 @@
 "use client";
 import React from 'react';
 
-const DotLoadingSpinner = ({ size = 180, text = "OneVega..." }) => {
+const DotLoadingSpinner = ({ size = 180, text = "ONEVEGA..." }) => {
   // Number of dots in the circle
   const dotCount = 18;
   
