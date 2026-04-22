@@ -304,10 +304,11 @@ const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassw
 
   // ─── Search filtering ─────────────────────────────────────────────────────────
   const filteredNavItems = useMemo(() => {
-    if (!searchQuery.trim()) return navItems;
+    const sorted = [...navItems].sort((a, b) => a.name.localeCompare(b.name));
+    if (!searchQuery.trim()) return sorted;
     const query = searchQuery.toLowerCase();
     const matchingMainBoards = new Set<string>();
-    return navItems.map(item => {
+    return sorted.map(item => {
       const mainBoardMatches = item.name.toLowerCase().includes(query);
       const matchingBoards: { [key: string]: Board } = {};
       let hasBoardMatches = false;

@@ -223,6 +223,9 @@ export default function Page() {
 
   const [runResult, setRunResult] = useState<RunResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [tableSortCol, setTableSortCol] = useState<number | null>(null);
+  const [tableSortDir, setTableSortDir] = useState<'asc' | 'desc'>('asc');
+  const [colWidths, setColWidths] = useState<number[]>([]);
   const [view,] = useState("manage-tables");
   const [isRunClicked, setIsRunClicked] = useState(false);
   const [hasReprompted, setHasReprompted] = useState(false);
@@ -1960,9 +1963,40 @@ useEffect(() => {
         align: "center"
       });
 
-      // Add the current prompt text (the one typed in the input)
-      if (newPromptName && newPromptName.trim().length > 0) {
-        addTextAcrossSlides(newPromptName.trim(), "Prompt");
+      // Prompt slide — use whichever prompt is currently active
+      const activePromptText = (newPromptName && newPromptName.trim()) || (selectedPrompt && selectedPrompt.trim()) || "";
+      if (activePromptText.length > 0) {
+        const promptSlide = ppt.addSlide({ masterName: "MASTER_SLIDE" });
+
+        // Slide heading (sits on the blue master header bar)
+        promptSlide.addText("Current Prompt", {
+          x: 0.5, y: 0.12, w: 8.5,
+          fontFace: "Arial", fontSize: 20,
+          color: "FFFFFF", bold: true, align: "left",
+        });
+
+        // Sub-label below the bar
+        promptSlide.addText("Query entered by the user", {
+          x: 0.5, y: 0.78, w: 8.5,
+          fontFace: "Arial", fontSize: 11,
+          color: "888888", italic: true, align: "left",
+        });
+
+        // Prompt text box with light blue fill — height adapts to text length
+        const estimatedLines = Math.ceil(activePromptText.length / 80);
+        const boxHeight = Math.min(Math.max(estimatedLines * 0.35 + 0.4, 1.0), 4.5);
+
+        promptSlide.addText(activePromptText, {
+          x: 0.5, y: 1.15, w: 8.5, h: boxHeight,
+          fontFace: "Arial", fontSize: 15,
+          color: THEME.text,
+          fill: { color: "EEF2FF" },
+          line: { color: "4472C4", pt: 1 },
+          wrap: true, valign: "middle",
+          align: "left",
+          lineSpacing: 22,
+          margin: [10, 14, 10, 14],
+        });
       }
 
       // Rest of your existing code for table data slides...
@@ -2489,6 +2523,36 @@ useEffect(() => {
   // }, [boardId]);
 
 
+  // Sorted table rows derived from runResult
+  const sortedTableData = (() => {
+    const rows = runResult?.table?.data ?? [];
+    if (tableSortCol === null) return rows;
+    return [...rows].sort((a, b) => {
+      const av = a[tableSortCol] ?? '';
+      const bv = b[tableSortCol] ?? '';
+      const an = parseFloat(av as string);
+      const bn = parseFloat(bv as string);
+      const cmp = !isNaN(an) && !isNaN(bn) ? an - bn : String(av).localeCompare(String(bv));
+      return tableSortDir === 'asc' ? cmp : -cmp;
+    });
+  })();
+
+  const handleColSort = (idx: number) => {
+    if (tableSortCol === idx) setTableSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setTableSortCol(idx); setTableSortDir('asc'); }
+  };
+
+  const startColResize = (colIdx: number, startX: number) => {
+    const startWidth = colWidths[colIdx] || 120;
+    const onMove = (e: MouseEvent) => {
+      const newWidth = Math.max(40, startWidth + e.clientX - startX);
+      setColWidths(prev => { const next = [...prev]; next[colIdx] = newWidth; return next; });
+    };
+    const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
   const fetchData = useCallback(async () => {
     if (!boardId || !user?.id) return;
 
@@ -3011,6 +3075,7 @@ useEffect(() => {
 
       if (response?.data) {
         setRunResult(response.data);
+        setTableSortCol(null); setTableSortDir('asc'); setColWidths([]);
 
       if (promptId) {
   const hasCharts = (response.data.charts ?? []).length > 0;
@@ -3157,6 +3222,7 @@ useEffect(() => {
       if (response?.data) {
         // console.log("Prompt run successfully:", response.data);
         setRunResult(response.data); // Set the result to display it
+        setTableSortCol(null); setTableSortDir('asc'); setColWidths([]);
 
         const hasCharts = (response.data.charts ?? []).length > 0;
         const hasTable = response.data.table?.columns?.length > 0;
@@ -4452,14 +4518,24 @@ useEffect(() => {
                           </button>
                         ))}
                       </div>
-                      {activeTab === 'table' && runResult?.table && runResult.table.columns?.length > 0 && (
-                        <button
-                          onClick={downloadExcel}
-                          className="px-3 py-1.5 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
-                        >
-                          Download as Excel
-                        </button>
-                      )}
+                      <div className="flex gap-2">
+                        {activeTab === 'table' && runResult?.table && runResult.table.columns?.length > 0 && (
+                          <button
+                            onClick={downloadExcel}
+                            className="px-3 py-1.5 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
+                          >
+                            Download as Excel
+                          </button>
+                        )}
+                        {activeTab === 'charts' && (runResult?.charts ?? []).length > 0 && (
+                          <button
+                            onClick={() => setShowDownloadModal(true)}
+                            className="px-3 py-1.5 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
+                          >
+                            Download as PPT
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     {/* Tab Content */}
@@ -4483,43 +4559,52 @@ useEffect(() => {
                      {activeTab === 'table' && (
                         <div className="table-tab">
                           {runResult?.table && runResult.table.columns?.length > 0 ? (
-                            <div>
-                              {/* <h4 className="font-medium text-lg">Table Data:</h4> */}
-                              <div className="max-h-96 overflow-y-auto overflow-x-auto border border-gray-300 rounded" style={{scrollbarWidth:'thin', scrollbarColor:'#313b96 #f1f1f1'}}>
-                                <table className="min-w-full table-auto whitespace-nowrap">
-                                  <thead className="bg-gray-100 sticky top-0">
-                                    <tr>
-                                      {runResult.table.columns.map((col, idx) => (
-                                        <th key={`col-header-${idx}-${col}`} className="p-2 border-b border-gray-300 text-left text-sm font-semibold text-gray-700">
-                                          {col}
-                                        </th>
-                                      ))}
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {runResult.table.data.length > 0 ? (
-                                      runResult.table.data.map((row, rowIdx) => (
-                                        <tr key={rowIdx}>
-                                          {row.map((cell, cellIdx) => (
-                                            <td key={cellIdx} className="p-2 border-b">
-                                              {cell}
-                                            </td>
-                                          ))}
-                                        </tr>
-                                      ))
-                                    ) : (
-                                      <tr>
-                                        <td
-                                          colSpan={runResult.table.columns.length}
-                                          className="text-center p-2"
-                                        >
-                                          No data available.
-                                        </td>
+                            <div className="max-h-96 overflow-auto border border-gray-300 rounded" style={{scrollbarWidth:'thin', scrollbarColor:'#313b96 #f1f1f1'}}>
+                              <table style={{ tableLayout: 'fixed', borderCollapse: 'collapse', width: 'max-content', minWidth: '100%' }}>
+                                <thead className="bg-gray-100 sticky top-0 z-10">
+                                  <tr>
+                                    {runResult.table.columns.map((col, idx) => (
+                                      <th
+                                        key={`col-header-${idx}-${col}`}
+                                        style={{ width: colWidths[idx] || 150, minWidth: 60, position: 'relative', userSelect: 'none', boxSizing: 'border-box' }}
+                                        className="border-b border-r border-gray-300 text-left text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-200"
+                                        onClick={() => handleColSort(idx)}
+                                      >
+                                        <span className="flex items-center gap-1 px-2 py-2 overflow-hidden">
+                                          <span className="truncate">{col}</span>
+                                          {tableSortCol === idx && (
+                                            <span className="flex-shrink-0 text-blue-500 text-xs">
+                                              {tableSortDir === 'asc' ? '▲' : '▼'}
+                                            </span>
+                                          )}
+                                        </span>
+                                        <span
+                                          onMouseDown={e => { e.preventDefault(); e.stopPropagation(); startColResize(idx, e.clientX); }}
+                                          onClick={e => e.stopPropagation()}
+                                          style={{ position: 'absolute', right: 0, top: '15%', bottom: '15%', width: 4, cursor: 'col-resize', borderRight: '2px solid #9ca3af' }}
+                                        />
+                                      </th>
+                                    ))}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {sortedTableData.length > 0 ? (
+                                    sortedTableData.map((row, rowIdx) => (
+                                      <tr key={rowIdx} className={rowIdx % 2 === 0 ? 'bg-white hover:bg-blue-50' : 'bg-gray-50 hover:bg-blue-50'}>
+                                        {row.map((cell, cellIdx) => (
+                                          <td key={cellIdx} style={{ width: colWidths[cellIdx] || 150, maxWidth: colWidths[cellIdx] || 150, overflow: 'hidden', textOverflow: 'ellipsis', boxSizing: 'border-box', whiteSpace: 'nowrap' }} className="px-2 py-2 border-b border-r border-gray-100 text-sm text-gray-700">
+                                            {cell}
+                                          </td>
+                                        ))}
                                       </tr>
-                                    )}
-                                  </tbody>
-                                </table>
-                              </div>
+                                    ))
+                                  ) : (
+                                    <tr>
+                                      <td colSpan={runResult.table.columns.length} className="text-center p-2 text-gray-400">No data available.</td>
+                                    </tr>
+                                  )}
+                                </tbody>
+                              </table>
                             </div>
                           ) : (
                             <div className="flex flex-col items-center justify-center py-16 text-black-500">
@@ -4539,12 +4624,12 @@ useEffect(() => {
                             <>
 
                               <div className="flex justify-end">
-                                <button
+                                {/* <button
                                   onClick={() => setShowDownloadModal(true)}
                                   className="mb-4 px-4 py-2 bg-blue-500 text-white rounded-md"
                                 >
-                                  Download as PPT
-                                </button>
+                                  Download as PPTee
+                                </button> */}
                                 {showDownloadModal && (
                                   <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
                                     <div className="bg-white p-6 rounded-lg shadow-xl max-w-md w-full">
@@ -6076,42 +6161,52 @@ useEffect(() => {
                  {activeTab === 'table' && (
                         <div className="table-tab">
                           {runResult?.table && runResult.table.columns?.length > 0 ? (
-                            <div>
-                              <div className="overflow-x-auto overflow-y-auto max-h-96 border border-gray-300 rounded" style={{scrollbarWidth:'thin', scrollbarColor:'#313b96 #f1f1f1'}}>
-                                <table className="min-w-full table-auto whitespace-nowrap">
-                                  <thead className="bg-gray-100 sticky top-0">
-                                    <tr>
-                                      {runResult.table.columns.map((col, idx) => (
-                                        <th key={`col-header-${idx}-${col}`} className="p-2 border-b border-gray-300 text-left text-sm font-semibold text-gray-700">
-                                          {col}
-                                        </th>
-                                      ))}
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {runResult.table.data.length > 0 ? (
-                                      runResult.table.data.map((row, rowIdx) => (
-                                        <tr key={rowIdx}>
-                                          {row.map((cell, cellIdx) => (
-                                            <td key={cellIdx} className="p-2 border-b">
-                                              {cell}
-                                            </td>
-                                          ))}
-                                        </tr>
-                                      ))
-                                    ) : (
-                                      <tr>
-                                        <td
-                                          colSpan={runResult.table.columns.length}
-                                          className="text-center p-2"
-                                        >
-                                          No data available.
-                                        </td>
+                            <div className="overflow-auto max-h-96 border border-gray-300 rounded" style={{scrollbarWidth:'thin', scrollbarColor:'#313b96 #f1f1f1'}}>
+                              <table style={{ tableLayout: 'fixed', borderCollapse: 'collapse', width: 'max-content', minWidth: '100%' }}>
+                                <thead className="bg-gray-100 sticky top-0 z-10">
+                                  <tr>
+                                    {runResult.table.columns.map((col, idx) => (
+                                      <th
+                                        key={`col-header-${idx}-${col}`}
+                                        style={{ width: colWidths[idx] || 150, minWidth: 60, position: 'relative', userSelect: 'none', boxSizing: 'border-box' }}
+                                        className="border-b border-r border-gray-300 text-left text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-200"
+                                        onClick={() => handleColSort(idx)}
+                                      >
+                                        <span className="flex items-center gap-1 px-2 py-2 overflow-hidden">
+                                          <span className="truncate">{col}</span>
+                                          {tableSortCol === idx && (
+                                            <span className="flex-shrink-0 text-blue-500 text-xs">
+                                              {tableSortDir === 'asc' ? '▲' : '▼'}
+                                            </span>
+                                          )}
+                                        </span>
+                                        <span
+                                          onMouseDown={e => { e.preventDefault(); e.stopPropagation(); startColResize(idx, e.clientX); }}
+                                          onClick={e => e.stopPropagation()}
+                                          style={{ position: 'absolute', right: 0, top: '15%', bottom: '15%', width: 4, cursor: 'col-resize', borderRight: '2px solid #9ca3af' }}
+                                        />
+                                      </th>
+                                    ))}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {sortedTableData.length > 0 ? (
+                                    sortedTableData.map((row, rowIdx) => (
+                                      <tr key={rowIdx} className={rowIdx % 2 === 0 ? 'bg-white hover:bg-blue-50' : 'bg-gray-50 hover:bg-blue-50'}>
+                                        {row.map((cell, cellIdx) => (
+                                          <td key={cellIdx} style={{ width: colWidths[cellIdx] || 150, maxWidth: colWidths[cellIdx] || 150, overflow: 'hidden', textOverflow: 'ellipsis', boxSizing: 'border-box', whiteSpace: 'nowrap' }} className="px-2 py-2 border-b border-r border-gray-100 text-sm text-gray-700">
+                                            {cell}
+                                          </td>
+                                        ))}
                                       </tr>
-                                    )}
-                                  </tbody>
-                                </table>
-                              </div>
+                                    ))
+                                  ) : (
+                                    <tr>
+                                      <td colSpan={runResult.table.columns.length} className="text-center p-2 text-gray-400">No data available.</td>
+                                    </tr>
+                                  )}
+                                </tbody>
+                              </table>
                             </div>
                           ) : (
                             <div className="flex flex-col items-center justify-center py-16 text-black-500">
