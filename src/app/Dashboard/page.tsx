@@ -296,7 +296,7 @@ function PLCard({ data, loading, error }: { data:any; loading:boolean; error:str
     : [];
 
   return (
-    <Card title="Profit & Loss KPI" icon="🏆" color="amber" loading={loading} error={error}>
+    <Card title="Profit KPI" icon="🏆" color="amber" loading={loading} error={error}>
       {barData.length > 0 && (
         <>
           <SecLabel title="Revenue vs Expenses" />
