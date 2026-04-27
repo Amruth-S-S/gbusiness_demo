@@ -115,7 +115,26 @@ export default function ManageParameterSetting(props: ManageParameterSettingProp
   const [openVersionDropdowns, setOpenVersionDropdowns] = useState<Set<number>>(new Set());
 
   // ── NEW: Track loaded params & filter summaries ──
-  const [loadedParamIds, setLoadedParamIds]     = useState<Set<number>>(new Set());
+const [loadedParamIds, setLoadedParamIds] = useState<Set<number>>(() => {
+  if (typeof window !== "undefined") {
+    try {
+      const key = `loaded_params_${props.boardId || sessionStorage.getItem("board_id") || 0}`;
+      const stored = sessionStorage.getItem(key);
+      return stored ? new Set<number>(JSON.parse(stored)) : new Set();
+    } catch { return new Set(); }
+  }
+  return new Set();
+});
+const markParamLoaded = useCallback((id: number) => {
+  setLoadedParamIds(prev => {
+    const next = new Set(prev).add(id);
+    try {
+      const key = `loaded_params_${boardId}`;
+      sessionStorage.setItem(key, JSON.stringify(Array.from(next)));
+    } catch {}
+    return next;
+  });
+}, [boardId]);
   const [filterSummaries, setFilterSummaries]   = useState<Record<number, FilterSummaryItem[]>>({});
 
   const toggleVersionDropdown = (id: number) => {
@@ -127,24 +146,24 @@ export default function ManageParameterSetting(props: ManageParameterSettingProp
   };
 
   // ── Helper: fetch & store filter summary for one param ──
-  const fetchFilterSummary = async (paramId: number) => {
+ const fetchFilterSummary = async (paramId: number) => {
   try {
     const res = await fetch(
       `${API_BASE}/api/parameter-settings/${paramId}`,
       { method: "GET", headers: getHeaders() }
     );
-
     if (res.ok) {
       const val = await res.json();
 
-      console.log("API FULL RESPONSE:", val);
+      // filter_summary lives inside filtered_versions[] — take the latest entry
+      const filteredVersions: any[] = val.filtered_versions || [];
+      const latestVersion = filteredVersions[filteredVersions.length - 1];
 
       const summary: FilterSummaryItem[] =
+        latestVersion?.filter_summary ??
         val.filter_summary ??
         val.parameter_setting?.filter_summary ??
         [];
-
-      console.log("EXTRACTED SUMMARY:", summary);
 
       setFilterSummaries(prev => ({
         ...prev,
@@ -152,10 +171,9 @@ export default function ManageParameterSetting(props: ManageParameterSettingProp
       }));
     }
   } catch (err) {
-    console.error(err);
+    console.error("fetchFilterSummary error:", err);
   }
 };
-
 
   // const fetchFilterSummary = async (paramId: number) => {
   //   try {
@@ -168,60 +186,87 @@ export default function ManageParameterSetting(props: ManageParameterSettingProp
   //   } catch {}
   // };
 
-  const fetchParameterSettings = async () => {
-    setLoadingSettings(true);
-    try {
-      const sources = props.dataSources && props.dataSources.length > 0 ? props.dataSources : [];
-      if (sources.length === 0) { setParameterSettings([]); setLoadingSettings(false); return; }
+const fetchParameterSettings = async () => {
+  setLoadingSettings(true);
+  try {
+    const sources = props.dataSources && props.dataSources.length > 0 ? props.dataSources : [];
+    if (sources.length === 0) { setParameterSettings([]); setLoadingSettings(false); return; }
 
-      const paramIds: number[] = [];
-      await Promise.allSettled(sources.map(async ds => {
-        try {
-          const res = await fetch(`${API_BASE}/api/parameter-settings/data-source/${ds.id}/settings`, { method: "GET", headers: getHeaders() });
-          if (!res.ok) return;
-          const json = await res.json();
-          const items: any[] = Array.isArray(json) ? json
-            : Array.isArray(json.settings) ? json.settings
-            : json.parameter_setting ? [json.parameter_setting]
-            : json.id ? [json] : [];
-          items.forEach(item => {
-            const id = Number(item.id ?? item.param_id);
-            if (id && !paramIds.includes(id)) paramIds.push(id);
-          });
-        } catch { }
-      }));
+    const paramIds: number[] = [];
+    await Promise.allSettled(sources.map(async ds => {
+      try {
+        const res = await fetch(
+          `${API_BASE}/api/parameter-settings/data-source/${ds.id}/settings`,
+          { method: "GET", headers: getHeaders() }
+        );
+        if (!res.ok) return;
+        const json = await res.json();
+        const items: any[] = Array.isArray(json) ? json
+          : Array.isArray(json.settings) ? json.settings
+          : json.parameter_setting ? [json.parameter_setting]
+          : json.id ? [json] : [];
+        items.forEach(item => {
+          const id = Number(item.id ?? item.param_id);
+          if (id && !paramIds.includes(id)) paramIds.push(id);
+        });
+      } catch { }
+    }));
 
-      if (paramIds.length === 0) { setParameterSettings([]); setLoadingSettings(false); return; }
+    if (paramIds.length === 0) { setParameterSettings([]); setLoadingSettings(false); return; }
 
-      const fullResults = await Promise.allSettled(
-        paramIds.map(id => fetch(`${API_BASE}/api/parameter-settings/${id}`, { method: "GET", headers: getHeaders() }).then(r => r.ok ? r.json() : null))
-      );
+    const fullResults = await Promise.allSettled(
+      paramIds.map(id =>
+        fetch(`${API_BASE}/api/parameter-settings/${id}`, { method: "GET", headers: getHeaders() })
+          .then(r => r.ok ? r.json() : null)
+      )
+    );
 
-      const allSettings: ParameterSetting[] = [];
-      fullResults.forEach(result => {
-        if (result.status === "fulfilled" && result.value) {
-          const val = result.value;
-          const ps: ParameterSetting = val.parameter_setting
-            ? { ...val.parameter_setting, data_source: val.data_source }
-            : val.id ? val : null;
-          if (ps) {
-            allSettings.push(ps);
-            // ── NEW: Extract and store filter_summary ──
-            const summary: FilterSummaryItem[] = val.filter_summary ?? val.parameter_setting?.filter_summary ?? [];
-            if (Array.isArray(summary)) {
-            setFilterSummaries(prev => ({ ...prev, [Number(ps.id)]: Array.isArray(summary) ? summary : [] }));
-            }
-          }
+    const allSettings: ParameterSetting[] = [];
+    const summaryBatch: Record<number, FilterSummaryItem[]> = {};
+
+    fullResults.forEach(result => {
+      if (result.status === "fulfilled" && result.value) {
+        const val = result.value;
+        const ps: ParameterSetting = val.parameter_setting
+          ? { ...val.parameter_setting, data_source: val.data_source }
+          : val.id ? val : null;
+        if (ps) {
+          allSettings.push(ps);
+
+          // filter_summary is inside filtered_versions[] — take the latest
+          const filteredVersions: any[] = val.filtered_versions || [];
+          const latestVersion = filteredVersions[filteredVersions.length - 1];
+
+          const summary: FilterSummaryItem[] =
+            latestVersion?.filter_summary ??
+            val.filter_summary ??
+            val.parameter_setting?.filter_summary ??
+            [];
+
+          summaryBatch[Number(ps.id)] = Array.isArray(summary) ? summary : [];
         }
-      });
-      setParameterSettings(allSettings);
-      allSettings.forEach(ps => fetchLatestVersion(ps.id));
-    } catch {
-      showToast("error", "Failed to load parameter settings");
-    } finally {
-      setLoadingSettings(false);
-    }
-  };
+      }
+    });
+
+    setParameterSettings(allSettings);
+
+    // Set batch first for fast initial render
+    setFilterSummaries(prev => ({ ...prev, ...summaryBatch }));
+
+    // Always fetch individually for every param — authoritative source
+    await Promise.allSettled(
+      allSettings.map(async ps => {
+        fetchLatestVersion(ps.id);
+        await fetchFilterSummary(ps.id);
+      })
+    );
+
+  } catch {
+    showToast("error", "Failed to load parameter settings");
+  } finally {
+    setLoadingSettings(false);
+  }
+};
 
   const fetchLatestVersion = async (paramId: number) => {
     try {
@@ -321,7 +366,7 @@ export default function ManageParameterSetting(props: ManageParameterSettingProp
   // ─────────── CARD INFO: quick load & open ───────────
   const handleCardInfoClick = async (ps: ParameterSetting, e: React.MouseEvent) => {
     e.stopPropagation();
-    setLoadingCardIds(prev => new Set(prev).add(ps.id));
+   markParamLoaded(ps.id);
     try {
       showToast("info", `Loading "${ps.name}"...`);
       const loadRes = await fetch(`${API_BASE}/api/parameter-settings/${ps.id}/load-source`, { method: "POST", headers: getHeaders(true) });
@@ -1299,12 +1344,12 @@ const [quickSelectInput, setQuickSelectInput] = useState("");
                               <span>{isLoadingCard ? "Loading..." : isLoaded ? "Loaded" : "Load Data"}</span>
                             </button>
                             {/* View Dataset */}
-                            <button
+                            {/* <button
                               onClick={() => openViewer(ps)}
                               title="View Dataset"
                               className="p-1.5 rounded-lg text-gray-400 hover:text-violet-600 hover:bg-violet-50 transition-all">
                               <Eye className="h-4 w-4" />
-                            </button>
+                            </button> */}
                             {/* Filtered version dropdown trigger */}
                             {versionInfo && (
                               <button
@@ -2047,16 +2092,21 @@ const displayHeader = (currentFilterType === "rename_column" && previewData?.old
 
                     {/* ── Day checkboxes — filtered by selected years ── */}
                     {dateSummaryLoaded && (() => {
-                      const displayDays = selectedYears.length > 0
-                        ? Array.from(
-                            selectedYears.reduce((set, y) => {
-                              Object.values((availableMonths as Record<number, Record<string, number[]>>)[y] || {}).forEach((days) => {
-                                if (Array.isArray(days)) days.forEach(d => set.add(d));
-                              });
-                              return set;
-                            }, new Set<number>())
-                          ).sort((a, b) => a - b)
-                        : availableDays;
+                      const displayDays = (() => {
+  const set = new Set<number>();
+  const yearsToCheck = selectedYears.length > 0 ? selectedYears : Object.keys(availableMonths).map(Number);
+  yearsToCheck.forEach(y => {
+    const monthMap = (availableMonths as Record<number, Record<string, number[]>>)[y] || {};
+    const monthsToCheck = selectedMonths.length > 0
+      ? selectedMonths.map(String)
+      : Object.keys(monthMap);
+    monthsToCheck.forEach(m => {
+      const days = monthMap[m];
+      if (Array.isArray(days)) days.forEach(d => set.add(d));
+    });
+  });
+  return set.size > 0 ? Array.from(set).sort((a, b) => a - b) : availableDays;
+})();
                       if (displayDays.length === 0) return null;
                       return (
                         <div>
