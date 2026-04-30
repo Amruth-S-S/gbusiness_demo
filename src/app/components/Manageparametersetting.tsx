@@ -114,28 +114,30 @@ export default function ManageParameterSetting(props: ManageParameterSettingProp
   const [paramVersions, setParamVersions]         = useState<Record<number, VersionInfo>>({});
   const [openVersionDropdowns, setOpenVersionDropdowns] = useState<Set<number>>(new Set());
 
-  // ── NEW: Track loaded params & filter summaries ──
-const [loadedParamIds, setLoadedParamIds] = useState<Set<number>>(() => {
-  if (typeof window !== "undefined") {
-    try {
-      const key = `loaded_params_${props.boardId || sessionStorage.getItem("board_id") || 0}`;
-      const stored = sessionStorage.getItem(key);
-      return stored ? new Set<number>(JSON.parse(stored)) : new Set();
-    } catch { return new Set(); }
-  }
-  return new Set();
-});
-const markParamLoaded = useCallback((id: number) => {
-  setLoadedParamIds(prev => {
-    const next = new Set(prev).add(id);
-    try {
-      const key = `loaded_params_${boardId}`;
-      sessionStorage.setItem(key, JSON.stringify(Array.from(next)));
-    } catch {}
-    return next;
+  // ── loadedParamIds: only set AFTER a successful Finalize ──
+  const [loadedParamIds, setLoadedParamIds] = useState<Set<number>>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const key = `loaded_params_${props.boardId || sessionStorage.getItem("board_id") || 0}`;
+        const stored = sessionStorage.getItem(key);
+        return stored ? new Set<number>(JSON.parse(stored)) : new Set();
+      } catch { return new Set(); }
+    }
+    return new Set();
   });
-}, [boardId]);
-  const [filterSummaries, setFilterSummaries]   = useState<Record<number, FilterSummaryItem[]>>({});
+
+  const markParamLoaded = useCallback((id: number) => {
+    setLoadedParamIds(prev => {
+      const next = new Set(prev).add(id);
+      try {
+        const key = `loaded_params_${boardId}`;
+        sessionStorage.setItem(key, JSON.stringify(Array.from(next)));
+      } catch {}
+      return next;
+    });
+  }, [boardId]);
+
+  const [filterSummaries, setFilterSummaries] = useState<Record<number, FilterSummaryItem[]>>({});
 
   const toggleVersionDropdown = (id: number) => {
     setOpenVersionDropdowns(prev => {
@@ -146,127 +148,105 @@ const markParamLoaded = useCallback((id: number) => {
   };
 
   // ── Helper: fetch & store filter summary for one param ──
- const fetchFilterSummary = async (paramId: number) => {
-  try {
-    const res = await fetch(
-      `${API_BASE}/api/parameter-settings/${paramId}`,
-      { method: "GET", headers: getHeaders() }
-    );
-    if (res.ok) {
-      const val = await res.json();
-
-      // filter_summary lives inside filtered_versions[] — take the latest entry
-      const filteredVersions: any[] = val.filtered_versions || [];
-      const latestVersion = filteredVersions[filteredVersions.length - 1];
-
-      const summary: FilterSummaryItem[] =
-        latestVersion?.filter_summary ??
-        val.filter_summary ??
-        val.parameter_setting?.filter_summary ??
-        [];
-
-      setFilterSummaries(prev => ({
-        ...prev,
-        [Number(paramId)]: Array.isArray(summary) ? summary : []
-      }));
-    }
-  } catch (err) {
-    console.error("fetchFilterSummary error:", err);
-  }
-};
-
-  // const fetchFilterSummary = async (paramId: number) => {
-  //   try {
-  //     const res = await fetch(`${API_BASE}/api/parameter-settings/${paramId}`, { method: "GET", headers: getHeaders() });
-  //     if (res.ok) {
-  //       const val = await res.json();
-  //       const summary: FilterSummaryItem[] = val.filter_summary ?? val.parameter_setting?.filter_summary ?? [];
-  //     setFilterSummaries(prev => ({ ...prev, [Number(paramId)]: Array.isArray(summary) ? summary : [] }));
-  //     }
-  //   } catch {}
-  // };
-
-const fetchParameterSettings = async () => {
-  setLoadingSettings(true);
-  try {
-    const sources = props.dataSources && props.dataSources.length > 0 ? props.dataSources : [];
-    if (sources.length === 0) { setParameterSettings([]); setLoadingSettings(false); return; }
-
-    const paramIds: number[] = [];
-    await Promise.allSettled(sources.map(async ds => {
-      try {
-        const res = await fetch(
-          `${API_BASE}/api/parameter-settings/data-source/${ds.id}/settings`,
-          { method: "GET", headers: getHeaders() }
-        );
-        if (!res.ok) return;
-        const json = await res.json();
-        const items: any[] = Array.isArray(json) ? json
-          : Array.isArray(json.settings) ? json.settings
-          : json.parameter_setting ? [json.parameter_setting]
-          : json.id ? [json] : [];
-        items.forEach(item => {
-          const id = Number(item.id ?? item.param_id);
-          if (id && !paramIds.includes(id)) paramIds.push(id);
-        });
-      } catch { }
-    }));
-
-    if (paramIds.length === 0) { setParameterSettings([]); setLoadingSettings(false); return; }
-
-    const fullResults = await Promise.allSettled(
-      paramIds.map(id =>
-        fetch(`${API_BASE}/api/parameter-settings/${id}`, { method: "GET", headers: getHeaders() })
-          .then(r => r.ok ? r.json() : null)
-      )
-    );
-
-    const allSettings: ParameterSetting[] = [];
-    const summaryBatch: Record<number, FilterSummaryItem[]> = {};
-
-    fullResults.forEach(result => {
-      if (result.status === "fulfilled" && result.value) {
-        const val = result.value;
-        const ps: ParameterSetting = val.parameter_setting
-          ? { ...val.parameter_setting, data_source: val.data_source }
-          : val.id ? val : null;
-        if (ps) {
-          allSettings.push(ps);
-
-          // filter_summary is inside filtered_versions[] — take the latest
-          const filteredVersions: any[] = val.filtered_versions || [];
-          const latestVersion = filteredVersions[filteredVersions.length - 1];
-
-          const summary: FilterSummaryItem[] =
-            latestVersion?.filter_summary ??
-            val.filter_summary ??
-            val.parameter_setting?.filter_summary ??
-            [];
-
-          summaryBatch[Number(ps.id)] = Array.isArray(summary) ? summary : [];
-        }
+  const fetchFilterSummary = async (paramId: number) => {
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/parameter-settings/${paramId}`,
+        { method: "GET", headers: getHeaders() }
+      );
+      if (res.ok) {
+        const val = await res.json();
+        const filteredVersions: any[] = val.filtered_versions || [];
+        const latestVersion = filteredVersions[filteredVersions.length - 1];
+        const summary: FilterSummaryItem[] =
+          latestVersion?.filter_summary ??
+          val.filter_summary ??
+          val.parameter_setting?.filter_summary ??
+          [];
+        setFilterSummaries(prev => ({
+          ...prev,
+          [Number(paramId)]: Array.isArray(summary) ? summary : []
+        }));
       }
-    });
+    } catch (err) {
+      console.error("fetchFilterSummary error:", err);
+    }
+  };
 
-    setParameterSettings(allSettings);
+  const fetchParameterSettings = async () => {
+    setLoadingSettings(true);
+    try {
+      const sources = props.dataSources && props.dataSources.length > 0 ? props.dataSources : [];
+      if (sources.length === 0) { setParameterSettings([]); setLoadingSettings(false); return; }
 
-    // Set batch first for fast initial render
-    setFilterSummaries(prev => ({ ...prev, ...summaryBatch }));
+      const paramIds: number[] = [];
+      await Promise.allSettled(sources.map(async ds => {
+        try {
+          const res = await fetch(
+            `${API_BASE}/api/parameter-settings/data-source/${ds.id}/settings`,
+            { method: "GET", headers: getHeaders() }
+          );
+          if (!res.ok) return;
+          const json = await res.json();
+          const items: any[] = Array.isArray(json) ? json
+            : Array.isArray(json.settings) ? json.settings
+            : json.parameter_setting ? [json.parameter_setting]
+            : json.id ? [json] : [];
+          items.forEach(item => {
+            const id = Number(item.id ?? item.param_id);
+            if (id && !paramIds.includes(id)) paramIds.push(id);
+          });
+        } catch { }
+      }));
 
-    // Always fetch individually for every param — authoritative source
-    await Promise.allSettled(
-      allSettings.map(async ps => {
-        fetchLatestVersion(ps.id);
-        await fetchFilterSummary(ps.id);
-      })
-    );
+      if (paramIds.length === 0) { setParameterSettings([]); setLoadingSettings(false); return; }
 
-  } catch {
-    showToast("error", "Failed to load parameter settings");
-  } finally {
-    setLoadingSettings(false);
-  }
-};
+      const fullResults = await Promise.allSettled(
+        paramIds.map(id =>
+          fetch(`${API_BASE}/api/parameter-settings/${id}`, { method: "GET", headers: getHeaders() })
+            .then(r => r.ok ? r.json() : null)
+        )
+      );
+
+      const allSettings: ParameterSetting[] = [];
+      const summaryBatch: Record<number, FilterSummaryItem[]> = {};
+
+      fullResults.forEach(result => {
+        if (result.status === "fulfilled" && result.value) {
+          const val = result.value;
+          const ps: ParameterSetting = val.parameter_setting
+            ? { ...val.parameter_setting, data_source: val.data_source }
+            : val.id ? val : null;
+          if (ps) {
+            allSettings.push(ps);
+            const filteredVersions: any[] = val.filtered_versions || [];
+            const latestVersion = filteredVersions[filteredVersions.length - 1];
+            const summary: FilterSummaryItem[] =
+              latestVersion?.filter_summary ??
+              val.filter_summary ??
+              val.parameter_setting?.filter_summary ??
+              [];
+            summaryBatch[Number(ps.id)] = Array.isArray(summary) ? summary : [];
+          }
+        }
+      });
+
+      setParameterSettings(allSettings);
+      setFilterSummaries(prev => ({ ...prev, ...summaryBatch }));
+
+      await Promise.allSettled(
+        allSettings.map(async ps => {
+          fetchLatestVersion(ps.id);
+          await fetchFilterSummary(ps.id);
+        })
+      );
+
+    } catch {
+      showToast("error", "Failed to load parameter settings");
+    } finally {
+      setLoadingSettings(false);
+    }
+  };
 
   const fetchLatestVersion = async (paramId: number) => {
     try {
@@ -364,9 +344,10 @@ const fetchParameterSettings = async () => {
   };
 
   // ─────────── CARD INFO: quick load & open ───────────
+  // NOTE: markParamLoaded is NOT called here — only after Finalize
   const handleCardInfoClick = async (ps: ParameterSetting, e: React.MouseEvent) => {
     e.stopPropagation();
-   markParamLoaded(ps.id);
+    setLoadingCardIds(prev => new Set(prev).add(ps.id));
     try {
       showToast("info", `Loading "${ps.name}"...`);
       const loadRes = await fetch(`${API_BASE}/api/parameter-settings/${ps.id}/load-source`, { method: "POST", headers: getHeaders(true) });
@@ -374,8 +355,6 @@ const fetchParameterSettings = async () => {
         showToast("error", `Load failed: ${await loadRes.text()}`); return;
       }
       await openViewer(ps);
-      // ── NEW: Mark this param as loaded ──
-      setLoadedParamIds(prev => new Set(prev).add(ps.id));
     } catch { showToast("error", "Network error loading parameter setting"); }
     finally { setLoadingCardIds(prev => { const s = new Set(prev); s.delete(ps.id); return s; }); }
   };
@@ -523,7 +502,9 @@ const fetchParameterSettings = async () => {
     setHistoryData([]);
     if (t === "get_history") fetchHistory();
   };
-const [quickSelectInput, setQuickSelectInput] = useState("");
+
+  const [quickSelectInput, setQuickSelectInput] = useState("");
+
   const transformationOptions = useMemo(() => [
     { id: "rename_column",       label: "Rename Column",     icon: <Type className="h-4 w-4" />,     color: "green"  },
     { id: "type_cast",           label: "Type Cast",         icon: <FileText className="h-4 w-4" />, color: "purple" },
@@ -579,8 +560,6 @@ const [quickSelectInput, setQuickSelectInput] = useState("");
     } catch { }
   };
 
-  
-
   const fetchFilterPreview = async () => {
     if (!selectedDataset) return;
     try {
@@ -610,7 +589,6 @@ const [quickSelectInput, setQuickSelectInput] = useState("");
         setSelectedTransformation(null);
         resetFilterForms();
         await refreshSavedDataset();
-        // ── NEW: Refresh filter summary after saving ──
         if (pid) await fetchFilterSummary(pid);
       } else { showToast("error", `Save failed: ${await res.text()}`); }
     } catch { showToast("error", "Network error saving"); }
@@ -771,7 +749,6 @@ const [quickSelectInput, setQuickSelectInput] = useState("");
           const fullData = json.data || json.preview || [];
           const columnHeaders = json.columns || [];
           setSelectedDataset({ ...selectedDataset, fullData, rows: json.rows || fullData.length, columns: columnHeaders.length, columnHeaders });
-          // ── Store old/new for table highlight ──
           setPreviewData({
             rows: json.rows,
             dropped_rows: 0,
@@ -867,7 +844,6 @@ const [quickSelectInput, setQuickSelectInput] = useState("");
         const years   = Object.keys(summary).map(Number).sort((a, b) => b - a);
         setAvailableYears(years);
         setAvailableMonths(summary);
-        // ── Extract all unique days from the summary ──
         const daySet = new Set<number>();
         Object.values(summary).forEach((monthMap: any) => {
           Object.values(monthMap).forEach((days: any) => {
@@ -890,10 +866,10 @@ const [quickSelectInput, setQuickSelectInput] = useState("");
     if (!selectedYears.length && !selectedMonths.length && !selectedDays.length) { showToast("warning", "Select at least one filter"); return; }
     setIsFilteringByDate(true);
     try {
-      const params = new URLSearchParams({ date_column: dateColumn, flat_list: "false" });
-      selectedYears.forEach(y => params.append("years", y.toString()));
-      selectedMonths.forEach(m => params.append("months", m.toString()));
-      selectedDays.forEach(d => params.append("days", d.toString()));
+     const params = new URLSearchParams({ date_column: dateColumn, flat_list: "false" });
+if (selectedYears.length)  params.append("years",  selectedYears.join(","));
+if (selectedMonths.length) params.append("months", selectedMonths.join(","));
+if (selectedDays.length)   params.append("days",   selectedDays.join(","));
       const res = await fetch(`${purl("/filter-by-date/")}?${params}`, { method: "GET", headers: getHeaders() });
       if (res.ok) {
         const data          = await res.json();
@@ -949,7 +925,7 @@ const [quickSelectInput, setQuickSelectInput] = useState("");
     const vals = Array.from(selectedFilterValues);
     try {
       const params = new URLSearchParams({ column_name: filterColumn });
-    params.append("value", vals.join(","));
+      params.append("value", vals.join(","));
       const res = await fetch(`${purl("/select-rows/")}?${params}`, { method: "GET", headers: getHeaders() });
       if (res.ok) {
         const data          = await res.json();
@@ -1058,7 +1034,6 @@ const [quickSelectInput, setQuickSelectInput] = useState("");
         showToast("success", result.message || "Undone successfully");
         await refreshCurrentDataset();
         if (selectedTransformation === "get_history") await fetchHistory();
-        // ── NEW: Refresh filter summary after undo ──
         if (pid) await fetchFilterSummary(pid);
       } else if (res.status === 404) { showToast("info", "Nothing to undo"); }
       else { showToast("error", `Undo failed: ${await res.text()}`); }
@@ -1077,7 +1052,6 @@ const [quickSelectInput, setQuickSelectInput] = useState("");
         await refreshCurrentDataset();
         setShowResetModal(false);
         if (selectedTransformation === "get_history") await fetchHistory();
-        // ── NEW: Refresh filter summary after reset ──
         if (pid) await fetchFilterSummary(pid);
       } else { showToast("error", `Reset failed: ${await res.text()}`); }
     } catch { showToast("error", "Network error resetting"); }
@@ -1109,11 +1083,15 @@ const [quickSelectInput, setQuickSelectInput] = useState("");
         const versionNum  = result.version ?? 1;
         if (pid) {
           setParamVersions(prev => ({ ...prev, [pid]: { version: versionNum, version_name: versionName } }));
-          // ── NEW: Refresh filter summary after finalize ──
           await fetchFilterSummary(pid);
+          // ── Mark this param as "Loaded" only after a successful Finalize ──
+          markParamLoaded(pid);
         }
         showToast("success", `Finalized & saved as "${versionName}" ✅`);
-        setShowSaveAsModal(false); setSaveAsVersionNote("");
+        // ── Close modal immediately on success ──
+        setShowSaveAsModal(false);
+        setSaveAsVersionNote("");
+        closeViewer(); // ← ADD THIS LINE
         setIsPreviewMode(false); setPreviewData(null); setCurrentFilterType(null);
         setSelectedTransformation(null); resetFilterForms();
         await fetchParameterSettings();
@@ -1183,7 +1161,6 @@ const [quickSelectInput, setQuickSelectInput] = useState("");
   const toastColor = (t: string) => ({ success: "bg-green-500", error: "bg-red-500", warning: "bg-yellow-500", info: "bg-blue-500" }[t] || "bg-gray-500");
   const toastIcon  = (t: string) => t === "success" ? <Check className="h-5 w-5" /> : t === "error" ? <X className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />;
 
-  // ── Helper: get icon for filter type ──
   const getFilterIcon = (filterType: string) => {
     const icons: Record<string, string> = {
       rename_column: "✏️", type_cast: "🔄", group_and_aggregate: "📊",
@@ -1272,13 +1249,14 @@ const [quickSelectInput, setQuickSelectInput] = useState("");
                   const filterEnabled  = ps.is_filter_enabled ?? false;
                   const versionInfo    = paramVersions[ps.id];
                   const isDropdownOpen = openVersionDropdowns.has(ps.id);
-                  // ── NEW: Check if this param's data has been loaded ──
                   const isLoaded       = loadedParamIds.has(ps.id);
+                  // ── Has filter summary steps ──
+                  const hasFilterSteps = (filterSummaries[ps.id] || []).length > 0;
 
                   return (
                     <React.Fragment key={ps.id}>
                       {/* MAIN ROW */}
-                      <tr className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                      <tr className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${isDropdownOpen && hasFilterSteps ? "bg-emerald-50/30" : ""}`}>
                         <td className="px-4 py-3 text-gray-400 font-medium text-xs">{idx + 1}</td>
                         <td className="px-4 py-3">
                           <span className="font-semibold text-gray-800">{ps.name}</span>
@@ -1325,11 +1303,11 @@ const [quickSelectInput, setQuickSelectInput] = useState("");
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-1.5">
-                            {/* ── MODIFIED: Load Data button — disabled after loaded ── */}
+                            {/* Load Data button — disabled only after Finalize */}
                             <button
                               onClick={e => handleCardInfoClick(ps, e)}
                               disabled={isLoadingCard || isLoaded}
-                              title={isLoaded ? "Data already loaded" : "Load & Apply Filter"}
+                              title={isLoaded ? "Data already finalized & loaded" : "Load & Apply Filter"}
                               className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
                                 isLoaded
                                   ? "text-emerald-700 bg-emerald-50 border-emerald-300"
@@ -1343,26 +1321,29 @@ const [quickSelectInput, setQuickSelectInput] = useState("");
                               }
                               <span>{isLoadingCard ? "Loading..." : isLoaded ? "Loaded" : "Load Data"}</span>
                             </button>
-                            {/* View Dataset */}
-                            {/* <button
-                              onClick={() => openViewer(ps)}
-                              title="View Dataset"
-                              className="p-1.5 rounded-lg text-gray-400 hover:text-violet-600 hover:bg-violet-50 transition-all">
-                              <Eye className="h-4 w-4" />
-                            </button> */}
-                            {/* Filtered version dropdown trigger */}
+
+                            {/* Filtered version dropdown trigger — highlighted when has filter steps */}
                             {versionInfo && (
                               <button
                                 onClick={() => toggleVersionDropdown(ps.id)}
-                                title="View Filtered Version"
-                                className={`p-1.5 rounded-lg transition-all flex items-center gap-0.5 ${
+                                title={hasFilterSteps ? `${filterSummaries[ps.id].length} filter step(s) applied` : "View Filtered Version"}
+                                className={`p-1.5 rounded-lg transition-all flex items-center gap-0.5 relative ${
                                   isDropdownOpen
-                                    ? "text-emerald-600 bg-emerald-50"
-                                    : "text-gray-400 hover:text-emerald-600 hover:bg-emerald-50"
+                                    ? "text-emerald-600 bg-emerald-100 shadow-sm ring-2 ring-emerald-300"
+                                    : hasFilterSteps
+                                      ? "text-emerald-600 bg-emerald-50 border border-emerald-300 hover:bg-emerald-100"
+                                      : "text-gray-400 hover:text-emerald-600 hover:bg-emerald-50"
                                 }`}>
+                                {/* Badge showing filter count */}
+                                {hasFilterSteps && !isDropdownOpen && (
+                                  <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-emerald-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+                                    {filterSummaries[ps.id].length}
+                                  </span>
+                                )}
                                 {isDropdownOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                               </button>
                             )}
+
                             {/* Delete */}
                             <button
                               onClick={e => { e.stopPropagation(); setDeleteTarget(ps); }}
@@ -1376,12 +1357,12 @@ const [quickSelectInput, setQuickSelectInput] = useState("");
 
                       {/* ────── FILTERED VERSION DROPDOWN ROW ────── */}
                       {versionInfo && isDropdownOpen && (
-                        <tr className="border-b border-emerald-100 bg-emerald-50/60">
+                        <tr className={`border-b transition-colors ${hasFilterSteps ? "border-emerald-300 bg-emerald-50" : "border-emerald-100 bg-emerald-50/60"}`}>
                           <td colSpan={7} className="px-6 py-0">
                             <div className="py-3">
                               <div className="flex items-stretch gap-4">
-                                {/* Left accent bar */}
-                                <div className="w-1 rounded-full bg-gradient-to-b from-emerald-400 to-teal-500 flex-shrink-0" />
+                                {/* Left accent bar — thicker & brighter when has filters */}
+                                <div className={`rounded-full flex-shrink-0 ${hasFilterSteps ? "w-1.5 bg-gradient-to-b from-emerald-500 to-teal-600" : "w-1 bg-gradient-to-b from-emerald-400 to-teal-500"}`} />
 
                                 {/* Content */}
                                 <div className="flex-1">
@@ -1440,7 +1421,7 @@ const [quickSelectInput, setQuickSelectInput] = useState("");
                                     <div className="flex-1" />
 
                                     {/* View button */}
-                                    <button
+                                    {/* <button
                                       onClick={() => openFilteredVersionViewer(ps, versionInfo)}
                                       disabled={isLoadingVer}
                                       className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg transition-all shadow-sm disabled:opacity-60 whitespace-nowrap">
@@ -1448,23 +1429,28 @@ const [quickSelectInput, setQuickSelectInput] = useState("");
                                         ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /><span>Loading...</span></>
                                         : <><Eye className="h-3.5 w-3.5" /><span>View Filtered Dataset</span></>
                                       }
-                                    </button>
+                                    </button> */}
                                   </div>
 
                                   {/* ── Filter Summary Section ── */}
-                                  <div className="pt-3 border-t border-emerald-200">
+                                  <div className={`pt-3 border-t ${hasFilterSteps ? "border-emerald-300" : "border-emerald-200"}`}>
                                     <div className="flex items-center gap-2 mb-2">
                                       <Filter className="h-3.5 w-3.5 text-emerald-600" />
                                       <p className="text-xs font-bold text-emerald-700 uppercase tracking-wide">
-                                        {(filterSummaries[ps.id] || []).length > 0
+                                        {hasFilterSteps
                                           ? `Applied Filters — ${filterSummaries[ps.id].length} step${filterSummaries[ps.id].length > 1 ? "s" : ""}`
                                           : "No Filter Steps"}
                                       </p>
+                                      {hasFilterSteps && (
+                                        <span className="ml-1 px-2 py-0.5 bg-emerald-500 text-white text-[10px] font-bold rounded-full">
+                                          {filterSummaries[ps.id].length}
+                                        </span>
+                                      )}
                                     </div>
-                                    {(filterSummaries[ps.id] || []).length > 0 ? (
+                                    {hasFilterSteps ? (
                                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                                         {filterSummaries[ps.id].map((f, i) => (
-                                          <div key={i} className="bg-white rounded-xl border border-emerald-200 p-3 shadow-sm hover:shadow-md transition-shadow flex items-start gap-2.5">
+                                          <div key={i} className="bg-white rounded-xl border-2 border-emerald-300 p-3 shadow-sm hover:shadow-md hover:border-emerald-400 transition-all flex items-start gap-2.5">
                                             <span className="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5">{i + 1}</span>
                                             <div className="flex-1 min-w-0">
                                               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded text-[9px] font-semibold uppercase tracking-wide mb-1">
@@ -1536,7 +1522,7 @@ const [quickSelectInput, setQuickSelectInput] = useState("");
                       <option value="">-- Select a data source --</option>
                       {dataSources.map(ds => (
                         <option key={ds.id} value={ds.id}>
-                      {ds.source_name || (ds as any).name} 
+                          {ds.source_name || (ds as any).name}
                         </option>
                       ))}
                     </select>
@@ -1802,19 +1788,22 @@ const [quickSelectInput, setQuickSelectInput] = useState("");
               {/* Table */}
               <div className="flex-1 overflow-hidden bg-gray-100">
                 {selectedDataset.fullData && selectedDataset.fullData.length > 0 ? (
-                  <div ref={tableScrollRef} className="h-full overflow-auto" style={{ overflowX: "hidden" }} onScroll={handleTableScrollWithSync}>
+                  <div
+                    ref={tableScrollRef}
+                    className="h-full overflow-auto table-main-scroll"
+                    style={{ overflowX: "hidden" }}
+                    onScroll={handleTableScrollWithSync}
+                  >
                     <table className="min-w-full bg-white border-collapse">
                       <thead className="sticky top-0 z-10 shadow-md">
                         <tr className="bg-gradient-to-r from-gray-800 to-gray-700">
                           <th className="px-3 py-2 text-left text-xs font-bold text-white border-r border-gray-600 bg-gray-900 sticky left-0 z-20 min-w-[50px]">#</th>
                           {columnHeaders.map((header, idx) => {
-                            // ── NEW: Highlight renamed column ──
-                          // REPLACE WITH:
-const isRenamedCol = currentFilterType === "rename_column" &&
-  (previewData?.old_column === header || previewData?.new_column === header);
-const displayHeader = (currentFilterType === "rename_column" && previewData?.old_column === header)
-  ? previewData.new_column   // ← show "Amount" instead of "Revenue"
-  : header;
+                            const isRenamedCol = currentFilterType === "rename_column" &&
+                              (previewData?.old_column === header || previewData?.new_column === header);
+                            const displayHeader = (currentFilterType === "rename_column" && previewData?.old_column === header)
+                              ? previewData.new_column
+                              : header;
                             return (
                               <th key={idx}
                                 className={`px-4 py-2 text-left text-xs font-semibold border-r border-gray-600 whitespace-nowrap min-w-[130px] group relative transition-colors ${
@@ -1824,16 +1813,16 @@ const displayHeader = (currentFilterType === "rename_column" && previewData?.old
                                 }`}>
                                 <div className="flex items-center justify-between gap-2">
                                   <div className="flex flex-col">
-                                  {/* // REPLACE WITH: */}
-<span className={`flex-1 cursor-pointer ${sortColumn === header ? "text-blue-300 font-bold" : ""} ${isRenamedCol ? "text-gray-900 font-bold" : ""}`}
-  onClick={() => handleColumnSort(displayHeader)}>
-  {displayHeader}
-</span>
-{isRenamedCol && previewData?.old_column === header && (
-  <span className="text-[9px] text-yellow-800 font-normal leading-tight">
-    ← was: {header}
-  </span>
-)}
+                                    <span
+                                      className={`flex-1 cursor-pointer ${sortColumn === header ? "text-blue-300 font-bold" : ""} ${isRenamedCol ? "text-gray-900 font-bold" : ""}`}
+                                      onClick={() => handleColumnSort(displayHeader)}>
+                                      {displayHeader}
+                                    </span>
+                                    {isRenamedCol && previewData?.old_column === header && (
+                                      <span className="text-[9px] text-yellow-800 font-normal leading-tight">
+                                        ← was: {header}
+                                      </span>
+                                    )}
                                   </div>
                                   <div className="flex items-center gap-1">
                                     <div className="opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer" onClick={() => handleColumnSort(header)}><SortIndicator col={header} /></div>
@@ -2011,7 +2000,7 @@ const displayHeader = (currentFilterType === "rename_column" && previewData?.old
                 </div>
               )}
 
-              {/* ── FILTER BY DATE (UPDATED with Day checkboxes) ── */}
+              {/* FILTER BY DATE */}
               {selectedTransformation === "filter_by_date" && (
                 <div className="h-full flex flex-col">
                   <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-pink-50 to-white">
@@ -2019,7 +2008,6 @@ const displayHeader = (currentFilterType === "rename_column" && previewData?.old
                     <p className="text-sm text-gray-600 mt-1">Filter records by Year, Month &amp; Day</p>
                   </div>
                   <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                    {/* Date Column Select */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">Select Date Column <span className="text-red-500">*</span></label>
                       <select value={dateColumn} onChange={e => { setDateColumn(e.target.value); setDateSummaryLoaded(false); setSelectedYears([]); setSelectedMonths([]); setSelectedDays([]); }} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 bg-white text-gray-900">
@@ -2032,8 +2020,6 @@ const displayHeader = (currentFilterType === "rename_column" && previewData?.old
                         </button>
                       )}
                     </div>
-
-                    {/* ── Year checkboxes ── */}
                     {dateSummaryLoaded && availableYears.length > 0 && (
                       <div>
                         <div className="flex items-center justify-between mb-2">
@@ -2058,8 +2044,6 @@ const displayHeader = (currentFilterType === "rename_column" && previewData?.old
                         )}
                       </div>
                     )}
-
-                    {/* ── Month checkboxes ── */}
                     {dateSummaryLoaded && (
                       <div>
                         <div className="flex items-center justify-between mb-2">
@@ -2089,24 +2073,22 @@ const displayHeader = (currentFilterType === "rename_column" && previewData?.old
                         )}
                       </div>
                     )}
-
-                    {/* ── Day checkboxes — filtered by selected years ── */}
                     {dateSummaryLoaded && (() => {
                       const displayDays = (() => {
-  const set = new Set<number>();
-  const yearsToCheck = selectedYears.length > 0 ? selectedYears : Object.keys(availableMonths).map(Number);
-  yearsToCheck.forEach(y => {
-    const monthMap = (availableMonths as Record<number, Record<string, number[]>>)[y] || {};
-    const monthsToCheck = selectedMonths.length > 0
-      ? selectedMonths.map(String)
-      : Object.keys(monthMap);
-    monthsToCheck.forEach(m => {
-      const days = monthMap[m];
-      if (Array.isArray(days)) days.forEach(d => set.add(d));
-    });
-  });
-  return set.size > 0 ? Array.from(set).sort((a, b) => a - b) : availableDays;
-})();
+                        const set = new Set<number>();
+                        const yearsToCheck = selectedYears.length > 0 ? selectedYears : Object.keys(availableMonths).map(Number);
+                        yearsToCheck.forEach(y => {
+                          const monthMap = (availableMonths as Record<number, Record<string, number[]>>)[y] || {};
+                          const monthsToCheck = selectedMonths.length > 0
+                            ? selectedMonths.map(String)
+                            : Object.keys(monthMap);
+                          monthsToCheck.forEach(m => {
+                            const days = monthMap[m];
+                            if (Array.isArray(days)) days.forEach(d => set.add(d));
+                          });
+                        });
+                        return set.size > 0 ? Array.from(set).sort((a, b) => a - b) : availableDays;
+                      })();
                       if (displayDays.length === 0) return null;
                       return (
                         <div>
@@ -2116,11 +2098,7 @@ const displayHeader = (currentFilterType === "rename_column" && previewData?.old
                               {selectedDays.length > 0 && (
                                 <button onClick={() => setSelectedDays([])} className="text-xs text-gray-400 hover:text-red-500">Clear</button>
                               )}
-                              <button
-                                onClick={() => setSelectedDays(displayDays)}
-                                className="text-xs text-pink-600 hover:text-pink-800 font-medium">
-                                All
-                              </button>
+                              <button onClick={() => setSelectedDays(displayDays)} className="text-xs text-pink-600 hover:text-pink-800 font-medium">All</button>
                             </div>
                           </div>
                           <div className="grid grid-cols-7 gap-1">
@@ -2128,30 +2106,19 @@ const displayHeader = (currentFilterType === "rename_column" && previewData?.old
                               const isSelected = selectedDays.includes(d);
                               return (
                                 <button key={d}
-                                  onClick={() => isSelected
-                                    ? setSelectedDays(p => p.filter(x => x !== d))
-                                    : setSelectedDays(p => [...p, d])
-                                  }
-                                  className={`py-1.5 rounded text-xs font-semibold transition-all ${
-                                    isSelected
-                                      ? "bg-pink-600 text-white shadow-sm"
-                                      : "bg-white text-gray-700 border border-gray-300 hover:bg-pink-50 hover:border-pink-300"
-                                  }`}>
+                                  onClick={() => isSelected ? setSelectedDays(p => p.filter(x => x !== d)) : setSelectedDays(p => [...p, d])}
+                                  className={`py-1.5 rounded text-xs font-semibold transition-all ${isSelected ? "bg-pink-600 text-white shadow-sm" : "bg-white text-gray-700 border border-gray-300 hover:bg-pink-50 hover:border-pink-300"}`}>
                                   {d}
                                 </button>
                               );
                             })}
                           </div>
                           {selectedDays.length > 0 && (
-                            <p className="text-xs text-pink-600 mt-1">
-                              {selectedDays.length} day(s) selected: {selectedDays.sort((a, b) => a - b).join(", ")}
-                            </p>
+                            <p className="text-xs text-pink-600 mt-1">{selectedDays.length} day(s) selected: {selectedDays.sort((a, b) => a - b).join(", ")}</p>
                           )}
                         </div>
                       );
                     })()}
-
-                    {/* Summary of selections */}
                     {dateSummaryLoaded && (selectedYears.length > 0 || selectedMonths.length > 0 || selectedDays.length > 0) && (
                       <div className="bg-pink-50 border border-pink-200 rounded-lg p-3">
                         <p className="text-xs font-semibold text-pink-700 mb-1">Filter Summary:</p>
@@ -2252,32 +2219,21 @@ const displayHeader = (currentFilterType === "rename_column" && previewData?.old
                             </div>
                           ))}
                         </div>
-                    
-
                         <input type="text" value={uniqueValuesSearch} onChange={e => setUniqueValuesSearch(e.target.value)} placeholder="Search values..." className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm" />
                         <div className="flex gap-2">
                           <button onClick={() => { const all = new Set(selectedFilterValues); (uniqueValuesData.unique_values as any[]).filter(v => !uniqueValuesSearch || String(v).toLowerCase().includes(uniqueValuesSearch.toLowerCase())).forEach((v: any) => all.add(v)); setSelectedFilterValues(all); }} className="flex-1 px-3 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 text-sm font-medium">Select All</button>
                           <button onClick={() => setSelectedFilterValues(new Set())} className="flex-1 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-medium">Clear</button>
                         </div>
-                        
-                        {selectedFilterValues.size > 0 && <div className="p-3 bg-indigo-50 rounded-lg border border-indigo-200"><p className="text-sm text-indigo-800">{selectedFilterValues.size > 0 && (() => {
-  const totalSelectedRows = uniqueValuesData
-    ? Array.from(selectedFilterValues).reduce(
-        (sum, v) =>
-          sum + (uniqueValuesData.value_counts?.[String(v)] || 0),
-        0
-      )
-    : 0;
-
-  return (
-    <div className="p-3 bg-indigo-50 rounded-lg border border-indigo-200">
-      <p className="text-sm text-indigo-800">
-        <strong>{selectedFilterValues.size}</strong> value(s) selected •{" "}
-        <strong>{totalSelectedRows}</strong> rows
-      </p>
-    </div>
-  );
-})()}</p></div>}
+                        {selectedFilterValues.size > 0 && (() => {
+                          const totalSelectedRows = uniqueValuesData
+                            ? Array.from(selectedFilterValues).reduce((sum, v) => sum + (uniqueValuesData.value_counts?.[String(v)] || 0), 0)
+                            : 0;
+                          return (
+                            <div className="p-3 bg-indigo-50 rounded-lg border border-indigo-200">
+                              <p className="text-sm text-indigo-800"><strong>{selectedFilterValues.size}</strong> value(s) selected • <strong>{totalSelectedRows}</strong> rows</p>
+                            </div>
+                          );
+                        })()}
                         <div className="max-h-64 overflow-y-auto border border-gray-300 rounded-lg bg-white">
                           <div className="p-2 space-y-1">
                             {(uniqueValuesData.unique_values as any[]).filter(v => !uniqueValuesSearch || String(v).toLowerCase().includes(uniqueValuesSearch.toLowerCase())).map((v: any, i: number) => {
@@ -2456,11 +2412,20 @@ const displayHeader = (currentFilterType === "rename_column" && previewData?.old
       <style jsx>{`
         @keyframes slide-in { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
         .animate-slide-in { animation: slide-in 0.3s ease-out; }
+
+        /* ── Pinned horizontal scrollbar (dark theme) ── */
         .pinned-hscroll::-webkit-scrollbar { height: 12px; }
         .pinned-hscroll::-webkit-scrollbar-track { background: #374151; }
         .pinned-hscroll::-webkit-scrollbar-thumb { background: #6b7280; border-radius: 6px; border: 2px solid #374151; }
         .pinned-hscroll::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
         .pinned-hscroll { scrollbar-width: auto; scrollbar-color: #6b7280 #374151; background-color: #374151; }
+
+        /* ── Main table vertical scrollbar — always visible on Mac ── */
+        .table-main-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+        .table-main-scroll::-webkit-scrollbar-track { background: #f1f5f9; }
+        .table-main-scroll::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 5px; border: 2px solid #f1f5f9; }
+        .table-main-scroll::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        .table-main-scroll { scrollbar-width: thin; scrollbar-color: #94a3b8 #f1f5f9; overflow: scroll !important; }
       `}</style>
     </div>
   );
