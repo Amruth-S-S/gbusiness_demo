@@ -76,7 +76,7 @@ interface ManageParameterSettingProps {
 // ─────────────────────────── COMPONENT ───────────────────────────
 export default function ManageParameterSetting(props: ManageParameterSettingProps = {}) {
   const API_BASE = process.env.NEXT_PUBLIC_GBUSINESS_API_URL || "https://gbus-dev1-35486280762.us-central1.run.app";
-  const API_KEY  = process.env.NEXT_PUBLIC_API_KEY || "";
+  const API_KEY = process.env.NEXT_PUBLIC_API_KEY || "";
 
   const getHeaders = (json = false) => {
     const h: Record<string, string> = { "X-API-Key": API_KEY };
@@ -85,14 +85,14 @@ export default function ManageParameterSetting(props: ManageParameterSettingProp
   };
 
   const [boardId, setBoardId] = useState<number>(Number(props.boardId || 0));
-  const [userId,  setUserId]  = useState<number>(Number(props.userId  || 0));
-  const [orgId,   setOrgId]   = useState<number>(Number(props.orgId   || 0));
+  const [userId, setUserId] = useState<number>(Number(props.userId || 0));
+  const [orgId, setOrgId] = useState<number>(Number(props.orgId || 0));
 
   useEffect(() => {
     if (typeof window !== "undefined") {
       if (!props.boardId) setBoardId(Number(sessionStorage.getItem("board_id") || 0));
-      if (!props.userId)  setUserId(Number(sessionStorage.getItem("user_id") || 0));
-      if (!props.orgId)   setOrgId(Number(sessionStorage.getItem("organization_id") || 0));
+      if (!props.userId) setUserId(Number(sessionStorage.getItem("user_id") || 0));
+      if (!props.orgId) setOrgId(Number(sessionStorage.getItem("organization_id") || 0));
     }
   }, [props.boardId, props.userId, props.orgId]);
 
@@ -107,11 +107,11 @@ export default function ManageParameterSetting(props: ManageParameterSettingProp
 
   // ─────────── PARAMETER SETTINGS ───────────
   const [parameterSettings, setParameterSettings] = useState<ParameterSetting[]>([]);
-  const [loadingSettings, setLoadingSettings]     = useState(false);
-  const [togglingIds, setTogglingIds]             = useState<Set<number>>(new Set());
-  const [loadingCardIds, setLoadingCardIds]       = useState<Set<number>>(new Set());
+  const [loadingSettings, setLoadingSettings] = useState(false);
+  const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
+  const [loadingCardIds, setLoadingCardIds] = useState<Set<number>>(new Set());
   const [loadingVersionIds, setLoadingVersionIds] = useState<Set<number>>(new Set());
-  const [paramVersions, setParamVersions]         = useState<Record<number, VersionInfo>>({});
+  const [paramVersions, setParamVersions] = useState<Record<number, VersionInfo>>({});
   const [openVersionDropdowns, setOpenVersionDropdowns] = useState<Set<number>>(new Set());
 
   // ── loadedParamIds: only set AFTER a successful Finalize ──
@@ -132,7 +132,7 @@ export default function ManageParameterSetting(props: ManageParameterSettingProp
       try {
         const key = `loaded_params_${boardId}`;
         sessionStorage.setItem(key, JSON.stringify(Array.from(next)));
-      } catch {}
+      } catch { }
       return next;
     });
   }, [boardId]);
@@ -190,8 +190,8 @@ export default function ManageParameterSetting(props: ManageParameterSettingProp
           const json = await res.json();
           const items: any[] = Array.isArray(json) ? json
             : Array.isArray(json.settings) ? json.settings
-            : json.parameter_setting ? [json.parameter_setting]
-            : json.id ? [json] : [];
+              : json.parameter_setting ? [json.parameter_setting]
+                : json.id ? [json] : [];
           items.forEach(item => {
             const id = Number(item.id ?? item.param_id);
             if (id && !paramIds.includes(id)) paramIds.push(id);
@@ -259,11 +259,11 @@ export default function ManageParameterSetting(props: ManageParameterSettingProp
           setParamVersions(prev => ({
             ...prev,
             [paramId]: {
-              version:            latest.version,
-              version_name:       latest.version_name || latest.name || `v${latest.version}`,
+              version: latest.version,
+              version_name: latest.version_name || latest.name || `v${latest.version}`,
               row_count_original: latest.row_count_original ?? null,
               row_count_filtered: latest.row_count_filtered ?? null,
-              source_type:        latest.source_type ?? "csv",
+              source_type: latest.source_type ?? "csv",
             }
           }));
         }
@@ -287,23 +287,23 @@ export default function ManageParameterSetting(props: ManageParameterSettingProp
         resetFilterForms();
 
         const init: SelectedDataset = {
-          param_id:      ps.id,
-          name:          vInfo.version_name,
-          description:   `Filtered version of "${ps.name}" — v${vInfo.version}`,
-          type:          "csv",
-          rows:          vInfo.row_count_filtered ?? 0,
-          columns:       0,
-          fullData:      [],
+          param_id: ps.id,
+          name: vInfo.version_name,
+          description: `Filtered version of "${ps.name}" — v${vInfo.version}`,
+          type: "csv",
+          rows: vInfo.row_count_filtered ?? 0,
+          columns: 0,
+          fullData: [],
           columnHeaders: [],
         };
         setSelectedDataset(init);
 
         const dataRes = await fetch(`${API_BASE}/api/parameter-settings/${ps.id}/view-data/`, { method: "GET", headers: getHeaders() });
         if (dataRes.ok) {
-          const json          = await dataRes.json();
-          const fullData      = json.data || json.preview || [];
+          const json = await dataRes.json();
+          const fullData = json.data || json.preview || [];
           const columnHeaders = json.columns || [];
-          const rows          = json.rows || fullData.length;
+          const rows = json.rows || fullData.length;
           setSelectedDataset({ ...init, fullData, columnHeaders, rows, columns: columnHeaders.length });
           showToast("success", `Loaded filtered version: ${rows.toLocaleString()} rows`);
         } else {
@@ -360,21 +360,21 @@ export default function ManageParameterSetting(props: ManageParameterSettingProp
   };
 
   // ─────────── FILTER LIST ───────────
-  const [listFilterName,   setListFilterName]   = useState("");
+  const [listFilterName, setListFilterName] = useState("");
   const [listFilterSource, setListFilterSource] = useState<number | "">("");
 
   const filteredSettings = useMemo(() => parameterSettings.filter(p => {
     const nameMatch = !listFilterName || p.name.toLowerCase().includes(listFilterName.toLowerCase());
-    const srcMatch  = !listFilterSource || p.data_source_id === Number(listFilterSource);
+    const srcMatch = !listFilterSource || p.data_source_id === Number(listFilterSource);
     return nameMatch && srcMatch;
   }), [parameterSettings, listFilterName, listFilterSource]);
 
   // ─────────── CREATE MODAL ───────────
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [createForm, setCreateForm]           = useState({ name: "", description: "", data_source_id: "" });
-  const [isCreating, setIsCreating]           = useState(false);
+  const [createForm, setCreateForm] = useState({ name: "", description: "", data_source_id: "" });
+  const [isCreating, setIsCreating] = useState(false);
   const [internalDataSources, setInternalDataSources] = useState<ExternalDataSource[]>([]);
-  const [loadingDS, setLoadingDS]             = useState(false);
+  const [loadingDS, setLoadingDS] = useState(false);
 
   const dataSources: ExternalDataSource[] = (props.dataSources && props.dataSources.length > 0) ? props.dataSources : internalDataSources;
 
@@ -425,7 +425,7 @@ export default function ManageParameterSetting(props: ManageParameterSettingProp
 
   // ─────────── DELETE ───────────
   const [deleteTarget, setDeleteTarget] = useState<ParameterSetting | null>(null);
-  const [isDeleting, setIsDeleting]     = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const confirmDelete = async () => {
     if (!deleteTarget) return;
@@ -442,7 +442,7 @@ export default function ManageParameterSetting(props: ManageParameterSettingProp
   };
 
   // ─────────── VIEWER ───────────
-  const [isViewerOpen, setIsViewerOpen]       = useState(false);
+  const [isViewerOpen, setIsViewerOpen] = useState(false);
   const [selectedDataset, setSelectedDataset] = useState<SelectedDataset | null>(null);
 
   const openViewer = async (ps: ParameterSetting) => {
@@ -457,9 +457,9 @@ export default function ManageParameterSetting(props: ManageParameterSettingProp
       const res = await fetch(`${API_BASE}/api/parameter-settings/${ps.id}/view-data/`, { method: "GET", headers: getHeaders() });
       if (res.ok) {
         const json = await res.json();
-        const fullData      = json.data || json.preview || [];
+        const fullData = json.data || json.preview || [];
         const columnHeaders = json.columns || [];
-        const rows          = json.rows || fullData.length;
+        const rows = json.rows || fullData.length;
         setSelectedDataset({ ...init, fullData, columnHeaders, rows, columns: columnHeaders.length });
         showToast("success", `Loaded: ${rows.toLocaleString()} rows × ${columnHeaders.length} columns`);
         await checkHistory(ps.id);
@@ -481,11 +481,11 @@ export default function ManageParameterSetting(props: ManageParameterSettingProp
     resetFilterForms();
   };
 
-  const pid  = selectedDataset?.param_id;
+  const pid = selectedDataset?.param_id;
   const purl = (path: string) => `${API_BASE}/api/parameter-settings/${pid}${path}`;
 
   // ─────────── EDIT PANEL ───────────
-  const [isEditPanelOpen, setIsEditPanelOpen]               = useState(false);
+  const [isEditPanelOpen, setIsEditPanelOpen] = useState(false);
   const [selectedTransformation, setSelectedTransformation] = useState<string | null>(null);
 
   const toggleEditPanel = () => { setIsEditPanelOpen(p => !p); setSelectedTransformation(null); };
@@ -506,21 +506,26 @@ export default function ManageParameterSetting(props: ManageParameterSettingProp
   const [quickSelectInput, setQuickSelectInput] = useState("");
 
   const transformationOptions = useMemo(() => [
-    { id: "rename_column",       label: "Rename Column",     icon: <Type className="h-4 w-4" />,     color: "green"  },
-    { id: "type_cast",           label: "Type Cast",         icon: <FileText className="h-4 w-4" />, color: "purple" },
+    { id: "filter_by_values", label: "Filter by Values", icon: <Filter className="h-4 w-4" />, color: "indigo" },
+    { id: "text_filter", label: "Text Filter", icon: <Type className="h-4 w-4" />, color: "blue" },
+    { id: "number_filter", label: "Number Filter", icon: <Hash className="h-4 w-4" />, color: "teal" },
     { id: "group_and_aggregate", label: "Group & Aggregate", icon: <Database className="h-4 w-4" />, color: "orange" },
-    { id: "filter_by_date",      label: "Filter by Date",    icon: <Calendar className="h-4 w-4" />, color: "pink"   },
-    { id: "get_history",         label: "Get History",       icon: <History className="h-4 w-4" />,  color: "gray"   },
-    { id: "filter_by_values",    label: "Filter by Values",  icon: <Filter className="h-4 w-4" />,   color: "indigo" },
-    { id: "text_filter",         label: "Text Filter",       icon: <Type className="h-4 w-4" />,     color: "blue"   },
-    { id: "number_filter",       label: "Number Filter",     icon: <Hash className="h-4 w-4" />,     color: "teal"   },
+    { id: "filter_by_date", label: "Filter by Date", icon: <Calendar className="h-4 w-4" />, color: "pink" },
+    { id: "rename_column", label: "Rename Column", icon: <Type className="h-4 w-4" />, color: "green" },
+    { id: "type_cast", label: "Type Cast", icon: <FileText className="h-4 w-4" />, color: "purple" },
+
+
+    { id: "get_history", label: "Get History", icon: <History className="h-4 w-4" />, color: "gray" },
+
+
+
   ], []);
 
   // ─────────── PREVIEW / FILTER STATE ───────────
-  const [isPreviewMode,      setIsPreviewMode]      = useState(false);
-  const [previewData,        setPreviewData]        = useState<any>(null);
-  const [currentFilterType,  setCurrentFilterType]  = useState<string | null>(null);
-  const [isSavingFilter,     setIsSavingFilter]     = useState(false);
+  const [isPreviewMode, setIsPreviewMode] = useState(false);
+  const [previewData, setPreviewData] = useState<any>(null);
+  const [currentFilterType, setCurrentFilterType] = useState<string | null>(null);
+  const [isSavingFilter, setIsSavingFilter] = useState(false);
   const [hasTransformations, setHasTransformations] = useState(false);
 
   const checkHistory = async (paramId: number) => {
@@ -540,7 +545,7 @@ export default function ManageParameterSetting(props: ManageParameterSettingProp
       const res = await fetch(url, { method: "GET", headers: getHeaders() });
       if (res.ok) {
         const json = await res.json();
-        const fullData      = json.data || json.preview || [];
+        const fullData = json.data || json.preview || [];
         const columnHeaders = json.columns || [];
         setSelectedDataset({ ...selectedDataset, fullData, columnHeaders, rows: json.rows || fullData.length, columns: columnHeaders.length });
       }
@@ -553,7 +558,7 @@ export default function ManageParameterSetting(props: ManageParameterSettingProp
       const res = await fetch(purl("/view-data/"), { method: "GET", headers: getHeaders() });
       if (res.ok) {
         const json = await res.json();
-        const fullData      = json.data || json.preview || [];
+        const fullData = json.data || json.preview || [];
         const columnHeaders = json.columns || [];
         setSelectedDataset({ ...selectedDataset, fullData, columnHeaders, rows: json.rows || fullData.length, columns: columnHeaders.length });
       }
@@ -565,10 +570,10 @@ export default function ManageParameterSetting(props: ManageParameterSettingProp
     try {
       const res = await fetch(purl("/get-current-filtered/"), { method: "GET", headers: getHeaders() });
       if (res.ok) {
-        const result        = await res.json();
-        const filteredData  = result.preview || result.data || [];
+        const result = await res.json();
+        const filteredData = result.preview || result.data || [];
         const columnHeaders = result.columns || selectedDataset.columnHeaders || [];
-        const rows          = result.rows || filteredData.length;
+        const rows = result.rows || filteredData.length;
         setPreviewData(result);
         setIsPreviewMode(true);
         setSelectedDataset({ ...selectedDataset, fullData: filteredData, rows, columns: columnHeaders.length, columnHeaders });
@@ -607,8 +612,8 @@ export default function ManageParameterSetting(props: ManageParameterSettingProp
     try {
       const res = await fetch(purl("/view-data/"), { method: "GET", headers: getHeaders() });
       if (res.ok) {
-        const json          = await res.json();
-        const fullData      = json.data || json.preview || [];
+        const json = await res.json();
+        const fullData = json.data || json.preview || [];
         const columnHeaders = json.columns || [];
         setSelectedDataset({ ...selectedDataset, fullData, columnHeaders, rows: json.rows || fullData.length, columns: columnHeaders.length });
       }
@@ -623,8 +628,8 @@ export default function ManageParameterSetting(props: ManageParameterSettingProp
 
   // ─────────── SORT ───────────
   const [sortColumn, setSortColumn] = useState<string | null>(null);
-  const [sortOrder,  setSortOrder]  = useState<"asc" | "desc">("asc");
-  const [isSorting,  setIsSorting]  = useState(false);
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+  const [isSorting, setIsSorting] = useState(false);
 
   const handleColumnSort = async (columnName: string) => {
     if (!selectedDataset) return;
@@ -641,8 +646,8 @@ export default function ManageParameterSetting(props: ManageParameterSettingProp
       const params = new URLSearchParams({ sort_column: columnName, order: newOrder, numeric: String(isNumeric) });
       const res = await fetch(`${purl("/sort-rows/")}?${params}`, { method: "GET", headers: getHeaders() });
       if (res.ok) {
-        const result        = await res.json();
-        const sortedData    = result.preview || result.data || [];
+        const result = await res.json();
+        const sortedData = result.preview || result.data || [];
         const columnHeaders = result.columns || selectedDataset.columnHeaders || [];
         setSelectedDataset({ ...selectedDataset, fullData: sortedData, rows: result.rows || sortedData.length, columns: columnHeaders.length, columnHeaders });
         showToast("success", `Sorted by "${columnName}" ${newOrder === "asc" ? "↑" : "↓"}`);
@@ -659,13 +664,13 @@ export default function ManageParameterSetting(props: ManageParameterSettingProp
   });
 
   // ─────────── COLUMN FILTER DROPDOWN ───────────
-  const [filterDropdownOpen,         setFilterDropdownOpen]         = useState<string | null>(null);
-  const [filterDropdownPosition,     setFilterDropdownPosition]     = useState({ top: 0, left: 0 });
-  const [columnFilterValues,         setColumnFilterValues]         = useState<any>(null);
-  const [isLoadingColumnFilter,      setIsLoadingColumnFilter]      = useState(false);
+  const [filterDropdownOpen, setFilterDropdownOpen] = useState<string | null>(null);
+  const [filterDropdownPosition, setFilterDropdownPosition] = useState({ top: 0, left: 0 });
+  const [columnFilterValues, setColumnFilterValues] = useState<any>(null);
+  const [isLoadingColumnFilter, setIsLoadingColumnFilter] = useState(false);
   const [selectedColumnFilterValues, setSelectedColumnFilterValues] = useState<Set<any>>(new Set());
-  const [columnFilterSearchTerm,     setColumnFilterSearchTerm]     = useState("");
-  const [isApplyingFilter,           setIsApplyingFilter]           = useState(false);
+  const [columnFilterSearchTerm, setColumnFilterSearchTerm] = useState("");
+  const [isApplyingFilter, setIsApplyingFilter] = useState(false);
 
   useEffect(() => {
     if (!filterDropdownOpen) return;
@@ -676,10 +681,10 @@ export default function ManageParameterSetting(props: ManageParameterSettingProp
 
   const fetchColumnFilterValues = async (col: string, event: React.MouseEvent) => {
     if (!selectedDataset) return;
-    const r  = (event.currentTarget as HTMLElement).getBoundingClientRect();
-    let top  = r.bottom + 8, left = r.left;
-    if (top + 500  > window.innerHeight) top  = Math.max(20, r.top - 500 - 8);
-    if (left + 384 > window.innerWidth)  left = window.innerWidth - 384 - 20;
+    const r = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    let top = r.bottom + 8, left = r.left;
+    if (top + 500 > window.innerHeight) top = Math.max(20, r.top - 500 - 8);
+    if (left + 384 > window.innerWidth) left = window.innerWidth - 384 - 20;
     setFilterDropdownPosition({ top, left });
     setIsLoadingColumnFilter(true); setFilterDropdownOpen(col); setColumnFilterSearchTerm("");
     try {
@@ -723,16 +728,16 @@ export default function ManageParameterSetting(props: ManageParameterSettingProp
   };
 
   const normalizeUniqueValues = (raw: any) => ({
-    unique_values:       raw.unique_values ?? raw.values ?? raw.data ?? (Array.isArray(raw) ? raw : []),
+    unique_values: raw.unique_values ?? raw.values ?? raw.data ?? (Array.isArray(raw) ? raw : []),
     unique_values_count: raw.unique_values_count ?? raw.count ?? 0,
-    total_rows:          raw.total_rows  ?? raw.total ?? 0,
-    null_rows:           raw.null_rows   ?? raw.null_count ?? 0,
-    value_counts:        raw.value_counts ?? raw.counts ?? {},
+    total_rows: raw.total_rows ?? raw.total ?? 0,
+    null_rows: raw.null_rows ?? raw.null_count ?? 0,
+    value_counts: raw.value_counts ?? raw.counts ?? {},
   });
 
   // ─────────── RENAME COLUMN ───────────
-  const [renameOldColumn,  setRenameOldColumn]  = useState("");
-  const [renameNewColumn,  setRenameNewColumn]  = useState("");
+  const [renameOldColumn, setRenameOldColumn] = useState("");
+  const [renameNewColumn, setRenameNewColumn] = useState("");
   const [isRenamingColumn, setIsRenamingColumn] = useState(false);
 
   const handleRenameColumn = async () => {
@@ -768,9 +773,9 @@ export default function ManageParameterSetting(props: ManageParameterSettingProp
   };
 
   // ─────────── TYPE CAST ───────────
-  const [typeCastColumn,  setTypeCastColumn]  = useState("");
+  const [typeCastColumn, setTypeCastColumn] = useState("");
   const [typeCastNewType, setTypeCastNewType] = useState("");
-  const [isTypeCasting,   setIsTypeCasting]   = useState(false);
+  const [isTypeCasting, setIsTypeCasting] = useState(false);
 
   const handleTypeCast = async () => {
     if (!selectedDataset || !typeCastColumn || !typeCastNewType) { showToast("warning", "Select column and type"); return; }
@@ -783,7 +788,7 @@ export default function ManageParameterSetting(props: ManageParameterSettingProp
         if (viewRes.ok) {
           const json = await viewRes.json();
           const fullData = json.data || json.preview || [];
-          const cols     = json.columns || [];
+          const cols = json.columns || [];
           setSelectedDataset({ ...selectedDataset, fullData, rows: json.rows || fullData.length, columns: cols.length, columnHeaders: cols });
           setPreviewData({ rows: json.rows, dropped_rows: 0, columns: cols, preview: fullData, filter_type: "TYPE_CAST", cast_column: typeCastColumn, cast_type: typeCastNewType });
           setIsPreviewMode(true); setCurrentFilterType("type_cast"); setHasTransformations(true);
@@ -796,9 +801,9 @@ export default function ManageParameterSetting(props: ManageParameterSettingProp
   };
 
   // ─────────── GROUP & AGGREGATE ───────────
-  const [groupByColumns,        setGroupByColumns]        = useState<string[]>([]);
-  const [aggregateColumn,       setAggregateColumn]       = useState("");
-  const [aggregateFunction,     setAggregateFunction]     = useState("");
+  const [groupByColumns, setGroupByColumns] = useState<string[]>([]);
+  const [aggregateColumn, setAggregateColumn] = useState("");
+  const [aggregateFunction, setAggregateFunction] = useState("");
   const [isGroupingAggregating, setIsGroupingAggregating] = useState(false);
 
   const handleGroupAndAggregate = async () => {
@@ -809,8 +814,8 @@ export default function ManageParameterSetting(props: ManageParameterSettingProp
       groupByColumns.forEach(c => params.append("group_by", c));
       const res = await fetch(`${purl("/group-and-aggregate/")}?${params}`, { method: "GET", headers: getHeaders() });
       if (res.ok) {
-        const data          = await res.json();
-        const filteredData  = data.preview || data.data || [];
+        const data = await res.json();
+        const filteredData = data.preview || data.data || [];
         const columnHeaders = data.columns || selectedDataset.columnHeaders || [];
         setPreviewData(data); setIsPreviewMode(true);
         setSelectedDataset({ ...selectedDataset, fullData: filteredData, rows: data.rows || filteredData.length, columns: columnHeaders.length, columnHeaders });
@@ -822,16 +827,16 @@ export default function ManageParameterSetting(props: ManageParameterSettingProp
   };
 
   // ─────────── FILTER BY DATE ───────────
-  const [dateColumn,           setDateColumn]           = useState("");
-  const [availableYears,       setAvailableYears]       = useState<number[]>([]);
-  const [availableMonths,      setAvailableMonths]      = useState<Record<string, Record<string, number[]>>>({});
-  const [availableDays,        setAvailableDays]        = useState<number[]>([]);
-  const [selectedYears,        setSelectedYears]        = useState<number[]>([]);
-  const [selectedMonths,       setSelectedMonths]       = useState<number[]>([]);
-  const [selectedDays,         setSelectedDays]         = useState<number[]>([]);
+  const [dateColumn, setDateColumn] = useState("");
+  const [availableYears, setAvailableYears] = useState<number[]>([]);
+  const [availableMonths, setAvailableMonths] = useState<Record<string, Record<string, number[]>>>({});
+  const [availableDays, setAvailableDays] = useState<number[]>([]);
+  const [selectedYears, setSelectedYears] = useState<number[]>([]);
+  const [selectedMonths, setSelectedMonths] = useState<number[]>([]);
+  const [selectedDays, setSelectedDays] = useState<number[]>([]);
   const [isLoadingDateSummary, setIsLoadingDateSummary] = useState(false);
-  const [isFilteringByDate,    setIsFilteringByDate]    = useState(false);
-  const [dateSummaryLoaded,    setDateSummaryLoaded]    = useState(false);
+  const [isFilteringByDate, setIsFilteringByDate] = useState(false);
+  const [dateSummaryLoaded, setDateSummaryLoaded] = useState(false);
 
   const fetchDateSummary = async () => {
     if (!selectedDataset || !dateColumn) { showToast("warning", "Select a date column"); return; }
@@ -839,9 +844,9 @@ export default function ManageParameterSetting(props: ManageParameterSettingProp
     try {
       const res = await fetch(`${purl("/filter-by-date/")}?date_column=${encodeURIComponent(dateColumn)}&flat_list=false`, { method: "GET", headers: getHeaders() });
       if (res.ok) {
-        const result  = await res.json();
+        const result = await res.json();
         const summary = result.unique_dates_summary || {};
-        const years   = Object.keys(summary).map(Number).sort((a, b) => b - a);
+        const years = Object.keys(summary).map(Number).sort((a, b) => b - a);
         setAvailableYears(years);
         setAvailableMonths(summary);
         const daySet = new Set<number>();
@@ -866,14 +871,14 @@ export default function ManageParameterSetting(props: ManageParameterSettingProp
     if (!selectedYears.length && !selectedMonths.length && !selectedDays.length) { showToast("warning", "Select at least one filter"); return; }
     setIsFilteringByDate(true);
     try {
-     const params = new URLSearchParams({ date_column: dateColumn, flat_list: "false" });
-if (selectedYears.length)  params.append("years",  selectedYears.join(","));
-if (selectedMonths.length) params.append("months", selectedMonths.join(","));
-if (selectedDays.length)   params.append("days",   selectedDays.join(","));
+      const params = new URLSearchParams({ date_column: dateColumn, flat_list: "false" });
+      if (selectedYears.length) params.append("years", selectedYears.join(","));
+      if (selectedMonths.length) params.append("months", selectedMonths.join(","));
+      if (selectedDays.length) params.append("days", selectedDays.join(","));
       const res = await fetch(`${purl("/filter-by-date/")}?${params}`, { method: "GET", headers: getHeaders() });
       if (res.ok) {
-        const data          = await res.json();
-        const filteredData  = data.preview || data.data || [];
+        const data = await res.json();
+        const filteredData = data.preview || data.data || [];
         const columnHeaders = data.columns || selectedDataset.columnHeaders || [];
         setPreviewData(data); setIsPreviewMode(true);
         setSelectedDataset({ ...selectedDataset, fullData: filteredData, rows: data.rows || filteredData.length, columns: columnHeaders.length, columnHeaders });
@@ -885,12 +890,12 @@ if (selectedDays.length)   params.append("days",   selectedDays.join(","));
   };
 
   // ─────────── FILTER BY VALUES ───────────
-  const [filterColumn,          setFilterColumn]          = useState("");
-  const [uniqueValuesData,      setUniqueValuesData]      = useState<any>(null);
-  const [selectedFilterValues,  setSelectedFilterValues]  = useState<Set<any>>(new Set());
+  const [filterColumn, setFilterColumn] = useState("");
+  const [uniqueValuesData, setUniqueValuesData] = useState<any>(null);
+  const [selectedFilterValues, setSelectedFilterValues] = useState<Set<any>>(new Set());
   const [isLoadingUniqueValues, setIsLoadingUniqueValues] = useState(false);
-  const [uniqueValuesLoaded,    setUniqueValuesLoaded]    = useState(false);
-  const [uniqueValuesSearch,    setUniqueValuesSearch]    = useState("");
+  const [uniqueValuesLoaded, setUniqueValuesLoaded] = useState(false);
+  const [uniqueValuesSearch, setUniqueValuesSearch] = useState("");
 
   useEffect(() => {
     if (filterColumn && selectedTransformation === "filter_by_values") {
@@ -905,7 +910,7 @@ if (selectedDays.length)   params.append("days",   selectedDays.join(","));
     try {
       const res = await fetch(`${purl("/unique-values/")}?column_name=${encodeURIComponent(filterColumn)}`, { method: "GET", headers: getHeaders() });
       if (res.ok) {
-        const raw        = await res.json();
+        const raw = await res.json();
         const normalized = normalizeUniqueValues(raw);
         if (normalized.unique_values.length === 0 && Array.isArray(raw)) {
           normalized.unique_values = raw; normalized.unique_values_count = raw.length;
@@ -928,11 +933,11 @@ if (selectedDays.length)   params.append("days",   selectedDays.join(","));
       params.append("value", vals.join(","));
       const res = await fetch(`${purl("/select-rows/")}?${params}`, { method: "GET", headers: getHeaders() });
       if (res.ok) {
-        const data          = await res.json();
-        const filteredData  = data.preview ?? data.data ?? data.rows_data ?? [];
+        const data = await res.json();
+        const filteredData = data.preview ?? data.data ?? data.rows_data ?? [];
         const columnHeaders = data.columns ?? selectedDataset.columnHeaders ?? [];
-        const rowCount      = data.rows ?? data.row_count ?? filteredData.length;
-        const droppedRows   = data.dropped_rows ?? data.filtered_count ?? 0;
+        const rowCount = data.rows ?? data.row_count ?? filteredData.length;
+        const droppedRows = data.dropped_rows ?? data.filtered_count ?? 0;
         setSelectedDataset({ ...selectedDataset, fullData: filteredData, rows: rowCount, columns: columnHeaders.length, columnHeaders });
         setPreviewData({ ...data, rows: rowCount, dropped_rows: droppedRows, columns: columnHeaders, preview: filteredData });
         setIsPreviewMode(true); setCurrentFilterType("filter_by_values"); setSelectedTransformation(null);
@@ -943,11 +948,11 @@ if (selectedDays.length)   params.append("days",   selectedDays.join(","));
   };
 
   // ─────────── TEXT FILTER ───────────
-  const [textFilterColumn,     setTextFilterColumn]     = useState("");
-  const [textFilterType,       setTextFilterType]       = useState("equals");
-  const [textFilterValue,      setTextFilterValue]      = useState("");
-  const [textFilterValue2,     setTextFilterValue2]     = useState("");
-  const [textFilterValues,     setTextFilterValues]     = useState<string[]>([]);
+  const [textFilterColumn, setTextFilterColumn] = useState("");
+  const [textFilterType, setTextFilterType] = useState("equals");
+  const [textFilterValue, setTextFilterValue] = useState("");
+  const [textFilterValue2, setTextFilterValue2] = useState("");
+  const [textFilterValues, setTextFilterValues] = useState<string[]>([]);
   const [isApplyingTextFilter, setIsApplyingTextFilter] = useState(false);
 
   const handleTextFilter = async () => {
@@ -955,13 +960,13 @@ if (selectedDays.length)   params.append("days",   selectedDays.join(","));
     setIsApplyingTextFilter(true);
     try {
       const params = new URLSearchParams({ column: textFilterColumn, filter_type: textFilterType });
-      if (["equals","contains","starts_with","ends_with","not_equals"].includes(textFilterType)) params.append("value", textFilterValue);
+      if (["equals", "contains", "starts_with", "ends_with", "not_equals"].includes(textFilterType)) params.append("value", textFilterValue);
       else if (textFilterType === "between") { params.append("value", textFilterValue); params.append("value2", textFilterValue2); }
       else if (textFilterType === "in") textFilterValues.forEach(v => params.append("values", v));
       const res = await fetch(`${purl("/text-filter/")}?${params}`, { method: "GET", headers: getHeaders() });
       if (res.ok) {
-        const data          = await res.json();
-        const filteredData  = data.preview || data.data || [];
+        const data = await res.json();
+        const filteredData = data.preview || data.data || [];
         const columnHeaders = data.columns || selectedDataset.columnHeaders || [];
         setPreviewData(data); setIsPreviewMode(true);
         setSelectedDataset({ ...selectedDataset, fullData: filteredData, rows: data.rows || filteredData.length, columns: columnHeaders.length, columnHeaders });
@@ -973,11 +978,11 @@ if (selectedDays.length)   params.append("days",   selectedDays.join(","));
   };
 
   // ─────────── NUMBER FILTER ───────────
-  const [numberFilterColumn,     setNumberFilterColumn]     = useState("");
-  const [numberFilterType,       setNumberFilterType]       = useState("equals");
-  const [numberFilterValue,      setNumberFilterValue]      = useState("");
-  const [numberFilterValue2,     setNumberFilterValue2]     = useState("");
-  const [numberFilterValues,     setNumberFilterValues]     = useState<string[]>([]);
+  const [numberFilterColumn, setNumberFilterColumn] = useState("");
+  const [numberFilterType, setNumberFilterType] = useState("equals");
+  const [numberFilterValue, setNumberFilterValue] = useState("");
+  const [numberFilterValue2, setNumberFilterValue2] = useState("");
+  const [numberFilterValues, setNumberFilterValues] = useState<string[]>([]);
   const [isApplyingNumberFilter, setIsApplyingNumberFilter] = useState(false);
 
   const handleNumberFilter = async () => {
@@ -985,13 +990,13 @@ if (selectedDays.length)   params.append("days",   selectedDays.join(","));
     setIsApplyingNumberFilter(true);
     try {
       const params = new URLSearchParams({ column: numberFilterColumn, filter_type: numberFilterType });
-      if (["equals","not_equals","greater_than","less_than","greater_than_or_equal","less_than_or_equal"].includes(numberFilterType)) params.append("value", numberFilterValue);
+      if (["equals", "not_equals", "greater_than", "less_than", "greater_than_or_equal", "less_than_or_equal"].includes(numberFilterType)) params.append("value", numberFilterValue);
       else if (numberFilterType === "between") { params.append("value", numberFilterValue); params.append("value2", numberFilterValue2); }
       else if (numberFilterType === "in") numberFilterValues.forEach(v => params.append("values", v));
       const res = await fetch(`${purl("/number-filter/")}?${params}`, { method: "GET", headers: getHeaders() });
       if (res.ok) {
-        const data          = await res.json();
-        const filteredData  = data.preview || data.data || [];
+        const data = await res.json();
+        const filteredData = data.preview || data.data || [];
         const columnHeaders = data.columns || selectedDataset.columnHeaders || [];
         setPreviewData(data); setIsPreviewMode(true);
         setSelectedDataset({ ...selectedDataset, fullData: filteredData, rows: data.rows || filteredData.length, columns: columnHeaders.length, columnHeaders });
@@ -1003,10 +1008,10 @@ if (selectedDays.length)   params.append("days",   selectedDays.join(","));
   };
 
   // ─────────── UNDO / RESET / HISTORY ───────────
-  const [isUndoing,        setIsUndoing]        = useState(false);
-  const [isResetting,      setIsResetting]      = useState(false);
-  const [showResetModal,   setShowResetModal]   = useState(false);
-  const [historyData,      setHistoryData]      = useState<HistoryItem[]>([]);
+  const [isUndoing, setIsUndoing] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [historyData, setHistoryData] = useState<HistoryItem[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
   const fetchHistory = async () => {
@@ -1015,7 +1020,7 @@ if (selectedDays.length)   params.append("days",   selectedDays.join(","));
     try {
       const res = await fetch(purl("/history/"), { method: "GET", headers: getHeaders() });
       if (res.ok) {
-        const result  = await res.json();
+        const result = await res.json();
         const history = result.history || [];
         setHistoryData(history); setHasTransformations(history.length > 0);
         history.length === 0 ? showToast("info", "No history found") : showToast("success", `${history.length} transformation(s) found`);
@@ -1059,9 +1064,9 @@ if (selectedDays.length)   params.append("days",   selectedDays.join(","));
   };
 
   // ─────────── FINALIZE ───────────
-  const [showSaveAsModal,   setShowSaveAsModal]   = useState(false);
+  const [showSaveAsModal, setShowSaveAsModal] = useState(false);
   const [saveAsVersionNote, setSaveAsVersionNote] = useState("");
-  const [isSavingAs,        setIsSavingAs]        = useState(false);
+  const [isSavingAs, setIsSavingAs] = useState(false);
 
   const openSaveAsModal = () => {
     if (!selectedDataset) return;
@@ -1078,9 +1083,9 @@ if (selectedDays.length)   params.append("days",   selectedDays.join(","));
         body: JSON.stringify({ version_note: saveAsVersionNote.trim() })
       });
       if (res.ok) {
-        const result      = await res.json();
+        const result = await res.json();
         const versionName = result.version_name || saveAsVersionNote.trim();
-        const versionNum  = result.version ?? 1;
+        const versionNum = result.version ?? 1;
         if (pid) {
           setParamVersions(prev => ({ ...prev, [pid]: { version: versionNum, version_name: versionName } }));
           await fetchFilterSummary(pid);
@@ -1121,21 +1126,21 @@ if (selectedDays.length)   params.append("days",   selectedDays.join(","));
 
   // ─────────── VIRTUAL SCROLL ───────────
   const ROW_HEIGHT = 36, OVERSCAN = 8;
-  const tableScrollRef  = useRef<HTMLDivElement>(null);
-  const hScrollBarRef   = useRef<HTMLDivElement>(null);
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+  const hScrollBarRef = useRef<HTMLDivElement>(null);
   const isSyncingScroll = useRef(false);
-  const [tableScrollTop,    setTableScrollTop]    = useState(0);
+  const [tableScrollTop, setTableScrollTop] = useState(0);
   const [tableClientHeight, setTableClientHeight] = useState(600);
-  const [tableScrollWidth,  setTableScrollWidth]  = useState(0);
+  const [tableScrollWidth, setTableScrollWidth] = useState(0);
 
   useEffect(() => { if (tableScrollRef.current) setTableScrollWidth(tableScrollRef.current.scrollWidth); }, [selectedDataset?.fullData, columnHeaders]);
 
   const { virtualStart, virtualEnd, paddingTop, paddingBottom } = useMemo(() => {
     if (!selectedDataset?.fullData) return { virtualStart: 0, virtualEnd: 0, paddingTop: 0, paddingBottom: 0 };
-    const total   = selectedDataset.fullData.length;
+    const total = selectedDataset.fullData.length;
     const visible = Math.ceil(tableClientHeight / ROW_HEIGHT);
-    const start   = Math.max(0, Math.floor(tableScrollTop / ROW_HEIGHT) - OVERSCAN);
-    const end     = Math.min(total, start + visible + OVERSCAN * 2);
+    const start = Math.max(0, Math.floor(tableScrollTop / ROW_HEIGHT) - OVERSCAN);
+    const end = Math.min(total, start + visible + OVERSCAN * 2);
     return { virtualStart: start, virtualEnd: end, paddingTop: start * ROW_HEIGHT, paddingBottom: Math.max(0, (total - end) * ROW_HEIGHT) };
   }, [tableScrollTop, tableClientHeight, selectedDataset?.fullData?.length]);
 
@@ -1159,7 +1164,7 @@ if (selectedDays.length)   params.append("days",   selectedDays.join(","));
 
   // ─────────── HELPERS ───────────
   const toastColor = (t: string) => ({ success: "bg-green-500", error: "bg-red-500", warning: "bg-yellow-500", info: "bg-blue-500" }[t] || "bg-gray-500");
-  const toastIcon  = (t: string) => t === "success" ? <Check className="h-5 w-5" /> : t === "error" ? <X className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />;
+  const toastIcon = (t: string) => t === "success" ? <Check className="h-5 w-5" /> : t === "error" ? <X className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />;
 
   const getFilterIcon = (filterType: string) => {
     const icons: Record<string, string> = {
@@ -1243,13 +1248,13 @@ if (selectedDays.length)   params.append("days",   selectedDays.join(","));
               </thead>
               <tbody>
                 {filteredSettings.map((ps, idx) => {
-                  const isToggling     = togglingIds.has(ps.id);
-                  const isLoadingCard  = loadingCardIds.has(ps.id);
-                  const isLoadingVer   = loadingVersionIds.has(ps.id);
-                  const filterEnabled  = ps.is_filter_enabled ?? false;
-                  const versionInfo    = paramVersions[ps.id];
+                  const isToggling = togglingIds.has(ps.id);
+                  const isLoadingCard = loadingCardIds.has(ps.id);
+                  const isLoadingVer = loadingVersionIds.has(ps.id);
+                  const filterEnabled = ps.is_filter_enabled ?? false;
+                  const versionInfo = paramVersions[ps.id];
                   const isDropdownOpen = openVersionDropdowns.has(ps.id);
-                  const isLoaded       = loadedParamIds.has(ps.id);
+                  const isLoaded = loadedParamIds.has(ps.id);
                   // ── Has filter summary steps ──
                   const hasFilterSteps = (filterSummaries[ps.id] || []).length > 0;
 
@@ -1287,11 +1292,10 @@ if (selectedDays.length)   params.append("days",   selectedDays.join(","));
                             onClick={e => handleToggleFilter(ps, e)}
                             disabled={isToggling}
                             title={filterEnabled ? "Data Filter Enabled — click to disable" : "Data Filter Disabled — click to enable"}
-                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-all disabled:opacity-50 ${
-                              filterEnabled
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-all disabled:opacity-50 ${filterEnabled
                                 ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
                                 : "bg-gray-100 text-gray-500 hover:bg-gray-200"
-                            }`}>
+                              }`}>
                             {isToggling
                               ? <Loader2 className="h-3 w-3 animate-spin" />
                               : filterEnabled
@@ -1308,11 +1312,10 @@ if (selectedDays.length)   params.append("days",   selectedDays.join(","));
                               onClick={e => handleCardInfoClick(ps, e)}
                               disabled={isLoadingCard || isLoaded}
                               title={isLoaded ? "Data already finalized & loaded" : "Load & Apply Filter"}
-                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
-                                isLoaded
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition-all disabled:opacity-50 disabled:cursor-not-allowed ${isLoaded
                                   ? "text-emerald-700 bg-emerald-50 border-emerald-300"
                                   : "text-gray-500 hover:text-emerald-700 hover:bg-emerald-50 border-gray-200 hover:border-emerald-300"
-                              }`}>
+                                }`}>
                               {isLoadingCard
                                 ? <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-500" />
                                 : isLoaded
@@ -1327,13 +1330,12 @@ if (selectedDays.length)   params.append("days",   selectedDays.join(","));
                               <button
                                 onClick={() => toggleVersionDropdown(ps.id)}
                                 title={hasFilterSteps ? `${filterSummaries[ps.id].length} filter step(s) applied` : "View Filtered Version"}
-                                className={`p-1.5 rounded-lg transition-all flex items-center gap-0.5 relative ${
-                                  isDropdownOpen
+                                className={`p-1.5 rounded-lg transition-all flex items-center gap-0.5 relative ${isDropdownOpen
                                     ? "text-emerald-600 bg-emerald-100 shadow-sm ring-2 ring-emerald-300"
                                     : hasFilterSteps
                                       ? "text-emerald-600 bg-emerald-50 border border-emerald-300 hover:bg-emerald-100"
                                       : "text-gray-400 hover:text-emerald-600 hover:bg-emerald-50"
-                                }`}>
+                                  }`}>
                                 {/* Badge showing filter count */}
                                 {hasFilterSteps && !isDropdownOpen && (
                                   <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-emerald-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
@@ -1760,10 +1762,10 @@ if (selectedDays.length)   params.append("days",   selectedDays.join(","));
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
                       {[
-                        { label: "Rows",     val: previewData.rows?.toLocaleString() || 0,         cls: "text-blue-600"  },
-                        { label: "Filtered", val: previewData.dropped_rows?.toLocaleString() || 0, cls: "text-red-600"   },
-                        { label: "Total",    val: ((previewData.rows||0)+(previewData.dropped_rows||0)).toLocaleString(), cls: "text-gray-600" },
-                        { label: "Kept",     val: previewData.rows && (previewData.rows+(previewData.dropped_rows||0))>0 ? `${((previewData.rows/(previewData.rows+(previewData.dropped_rows||0)))*100).toFixed(1)}%` : "0%", cls: "text-green-600" },
+                        { label: "Rows", val: previewData.rows?.toLocaleString() || 0, cls: "text-blue-600" },
+                        { label: "Filtered", val: previewData.dropped_rows?.toLocaleString() || 0, cls: "text-red-600" },
+                        { label: "Total", val: ((previewData.rows || 0) + (previewData.dropped_rows || 0)).toLocaleString(), cls: "text-gray-600" },
+                        { label: "Kept", val: previewData.rows && (previewData.rows + (previewData.dropped_rows || 0)) > 0 ? `${((previewData.rows / (previewData.rows + (previewData.dropped_rows || 0))) * 100).toFixed(1)}%` : "0%", cls: "text-green-600" },
                       ].map(s => (
                         <div key={s.label} className="flex items-center gap-1 px-2 py-1 bg-white rounded border border-yellow-300 text-xs">
                           <span className="text-gray-500">{s.label}:</span><span className={`font-bold ${s.cls}`}>{s.val}</span>
@@ -1773,10 +1775,10 @@ if (selectedDays.length)   params.append("days",   selectedDays.join(","));
                         <div className="flex items-center gap-1 px-2 py-1 bg-white rounded border border-yellow-300 text-xs flex-1 min-w-0">
                           <span className="text-gray-500 flex-shrink-0">Transform:</span>
                           <span className="font-bold text-gray-900 truncate">
-                            {currentFilterType === "sort"          ? `SORT: ${previewData?.sort_column} (${previewData?.sort_order === "asc" ? "↑" : "↓"})` :
-                             currentFilterType === "rename_column" ? `RENAME: '${previewData?.old_column}' → '${previewData?.new_column}'` :
-                             currentFilterType === "type_cast"     ? `CAST: '${previewData?.cast_column}' → ${previewData?.cast_type}` :
-                             currentFilterType.replace(/_/g, " ").toUpperCase()}
+                            {currentFilterType === "sort" ? `SORT: ${previewData?.sort_column} (${previewData?.sort_order === "asc" ? "↑" : "↓"})` :
+                              currentFilterType === "rename_column" ? `RENAME: '${previewData?.old_column}' → '${previewData?.new_column}'` :
+                                currentFilterType === "type_cast" ? `CAST: '${previewData?.cast_column}' → ${previewData?.cast_type}` :
+                                  currentFilterType.replace(/_/g, " ").toUpperCase()}
                           </span>
                         </div>
                       )}
@@ -1806,11 +1808,10 @@ if (selectedDays.length)   params.append("days",   selectedDays.join(","));
                               : header;
                             return (
                               <th key={idx}
-                                className={`px-4 py-2 text-left text-xs font-semibold border-r border-gray-600 whitespace-nowrap min-w-[130px] group relative transition-colors ${
-                                  isRenamedCol
+                                className={`px-4 py-2 text-left text-xs font-semibold border-r border-gray-600 whitespace-nowrap min-w-[130px] group relative transition-colors ${isRenamedCol
                                     ? "bg-yellow-400 text-gray-900"
                                     : "text-white"
-                                }`}>
+                                  }`}>
                                 <div className="flex items-center justify-between gap-2">
                                   <div className="flex flex-col">
                                     <span
@@ -2053,8 +2054,8 @@ if (selectedDays.length)   params.append("days",   selectedDays.join(","));
                           )}
                         </div>
                         <div className="grid grid-cols-3 gap-1">
-                          {[{n:1,l:"Jan"},{n:2,l:"Feb"},{n:3,l:"Mar"},{n:4,l:"Apr"},{n:5,l:"May"},{n:6,l:"Jun"},{n:7,l:"Jul"},{n:8,l:"Aug"},{n:9,l:"Sep"},{n:10,l:"Oct"},{n:11,l:"Nov"},{n:12,l:"Dec"}].map(m => {
-                            const isSelected  = selectedMonths.includes(m.n);
+                          {[{ n: 1, l: "Jan" }, { n: 2, l: "Feb" }, { n: 3, l: "Mar" }, { n: 4, l: "Apr" }, { n: 5, l: "May" }, { n: 6, l: "Jun" }, { n: 7, l: "Jul" }, { n: 8, l: "Aug" }, { n: 9, l: "Sep" }, { n: 10, l: "Oct" }, { n: 11, l: "Nov" }, { n: 12, l: "Dec" }].map(m => {
+                            const isSelected = selectedMonths.includes(m.n);
                             const isAvailable = selectedYears.length === 0
                               ? Object.values(availableMonths).some(ym => ym.hasOwnProperty(m.n.toString()))
                               : selectedYears.some(y => availableMonths[y]?.hasOwnProperty(m.n.toString()));
@@ -2124,8 +2125,8 @@ if (selectedDays.length)   params.append("days",   selectedDays.join(","));
                         <p className="text-xs font-semibold text-pink-700 mb-1">Filter Summary:</p>
                         <div className="space-y-1 text-xs text-pink-600">
                           {selectedYears.length > 0 && <p>📅 Years: {selectedYears.sort().join(", ")}</p>}
-                          {selectedMonths.length > 0 && <p>📆 Months: {selectedMonths.sort((a,b) => a-b).map(m => ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][m-1]).join(", ")}</p>}
-                          {selectedDays.length > 0 && <p>🗓 Days: {selectedDays.sort((a,b) => a-b).join(", ")}</p>}
+                          {selectedMonths.length > 0 && <p>📆 Months: {selectedMonths.sort((a, b) => a - b).map(m => ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][m - 1]).join(", ")}</p>}
+                          {selectedDays.length > 0 && <p>🗓 Days: {selectedDays.sort((a, b) => a - b).join(", ")}</p>}
                         </div>
                       </div>
                     )}
@@ -2212,7 +2213,7 @@ if (selectedDays.length)   params.append("days",   selectedDays.join(","));
                     {uniqueValuesLoaded && uniqueValuesData && (
                       <>
                         <div className="grid grid-cols-3 gap-2">
-                          {[{l:"Total",v:uniqueValuesData.total_rows,c:"blue"},{l:"Unique",v:uniqueValuesData.unique_values_count,c:"green"},{l:"Nulls",v:uniqueValuesData.null_rows,c:"purple"}].map(s => (
+                          {[{ l: "Total", v: uniqueValuesData.total_rows, c: "blue" }, { l: "Unique", v: uniqueValuesData.unique_values_count, c: "green" }, { l: "Nulls", v: uniqueValuesData.null_rows, c: "purple" }].map(s => (
                             <div key={s.l} className={`bg-${s.c}-50 p-2 rounded-lg border border-${s.c}-200`}>
                               <p className={`text-xs text-${s.c}-600 font-medium`}>{s.l}</p>
                               <p className={`text-base font-bold text-${s.c}-900`}>{s.v}</p>
@@ -2238,7 +2239,7 @@ if (selectedDays.length)   params.append("days",   selectedDays.join(","));
                           <div className="p-2 space-y-1">
                             {(uniqueValuesData.unique_values as any[]).filter(v => !uniqueValuesSearch || String(v).toLowerCase().includes(uniqueValuesSearch.toLowerCase())).map((v: any, i: number) => {
                               const isSelected = selectedFilterValues.has(v);
-                              const count      = uniqueValuesData.value_counts?.[String(v)] || 0;
+                              const count = uniqueValuesData.value_counts?.[String(v)] || 0;
                               return (
                                 <label key={i} className={`flex items-center gap-3 p-2.5 rounded-lg cursor-pointer transition-all ${isSelected ? "bg-indigo-100 border-2 border-indigo-500" : "hover:bg-gray-50 border-2 border-transparent"}`}>
                                   <input type="checkbox" checked={isSelected} onChange={() => { const s = new Set(selectedFilterValues); isSelected ? s.delete(v) : s.add(v); setSelectedFilterValues(s); }} className="h-4 w-4 text-indigo-600 rounded" />
@@ -2285,7 +2286,7 @@ if (selectedDays.length)   params.append("days",   selectedDays.join(","));
                         <option value="in">In List</option><option value="empty">Is Empty</option><option value="not_empty">Is Not Empty</option>
                       </select>
                     </div>
-                    {["equals","contains","starts_with","ends_with","not_equals"].includes(textFilterType) && (
+                    {["equals", "contains", "starts_with", "ends_with", "not_equals"].includes(textFilterType) && (
                       <div><label className="block text-sm font-medium text-gray-700 mb-2">Value <span className="text-red-500">*</span></label><input type="text" value={textFilterValue} onChange={e => setTextFilterValue(e.target.value)} placeholder="Enter value" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
                     )}
                     {textFilterType === "between" && (
@@ -2332,7 +2333,7 @@ if (selectedDays.length)   params.append("days",   selectedDays.join(","));
                         <option value="empty">Is Empty/Null</option><option value="not_empty">Is Not Empty</option>
                       </select>
                     </div>
-                    {["equals","not_equals","greater_than","less_than","greater_than_or_equal","less_than_or_equal"].includes(numberFilterType) && (
+                    {["equals", "not_equals", "greater_than", "less_than", "greater_than_or_equal", "less_than_or_equal"].includes(numberFilterType) && (
                       <div><label className="block text-sm font-medium text-gray-700 mb-2">Value <span className="text-red-500">*</span></label><input type="number" step="any" value={numberFilterValue} onChange={e => setNumberFilterValue(e.target.value)} placeholder="Enter value" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500" /></div>
                     )}
                     {numberFilterType === "between" && (
@@ -2384,7 +2385,7 @@ if (selectedDays.length)   params.append("days",   selectedDays.join(","));
                   <div className="flex-1 overflow-y-auto">
                     <div className="p-2 space-y-1">
                       {getFilteredColVals().map((v: any, i: number) => {
-                        const count      = columnFilterValues.value_counts?.[String(v)] || 0;
+                        const count = columnFilterValues.value_counts?.[String(v)] || 0;
                         const isSelected = selectedColumnFilterValues.has(v);
                         return (
                           <label key={i} className={`flex items-center gap-2 p-2 rounded cursor-pointer transition-colors ${isSelected ? "bg-indigo-50 border border-indigo-200" : "hover:bg-gray-50"}`}>
