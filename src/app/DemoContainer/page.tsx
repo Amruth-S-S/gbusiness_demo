@@ -12,7 +12,7 @@ import { useSearchParams } from "next/navigation";
 import { FaPlay, FaPen, FaTrash, FaEdit, FaCheck, FaBan } from "react-icons/fa";
 import { FaFileUpload, FaCaretUp, FaCaretDown, FaUpload, FaTimes, FaComment, FaBars } from 'react-icons/fa';
 import axios from "axios";
-import React from "react";
+import React, { Suspense } from "react";
 import { saveAs } from 'file-saver';
 import * as XLSX from 'xlsx';
 // import { useDropzone } from "react-dropzone";
@@ -167,10 +167,8 @@ interface PromptComment {
 }
 
 
-
-
-export default function Page() {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+function DemoContainerContent() {
+   const apiUrl = process.env.NEXT_PUBLIC_API_URL;
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const boardId = searchParams.get("board_id");
@@ -6816,6 +6814,15 @@ const SpeechRecognition =
     </div >
   );
 
+}
+
+
+export default function Page() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <DemoContainerContent />
+    </Suspense>
+  );
 }
 
 
