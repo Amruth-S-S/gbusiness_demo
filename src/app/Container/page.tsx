@@ -3946,9 +3946,9 @@ const SpeechRecognition =
 
                   // { key: "tally",        label: "Manage ETL" },
 
-                  // { key: "master",       label: "Master Settings" },
-                  // { key: "parameter",   label: "Parameter Settings" },
-                  // { key: "timeline",     label: "Timeline Settings" },
+                  { key: "master",       label: "Master Settings" },
+                  { key: "parameter",   label: "Parameter Settings" },
+                  { key: "timeline",     label: "Timeline Settings" },
                   // { key: "kpi",          label: "KPI Updates" },
                 ].map((tab) => (
                   <button
@@ -3979,9 +3979,9 @@ const SpeechRecognition =
 
                       // { key: "tally",         label: "Manage ETL" },
 
-                      // { key: "master",        label: "Master Settings" },
-                      // { key: "parameter",    label: "Parameter Settings" },
-                      // { key: "timeline",      label: "Timeline Settings" },
+                      { key: "master",        label: "Master Settings" },
+                      { key: "parameter",    label: "Parameter Settings" },
+                      { key: "timeline",      label: "Timeline Settings" },
                       // { key: "kpi",           label: "KPI Updates" },
                     ].find((t) => t.key === activeTab)?.label ?? "Select Tab"}
                   </span>
