@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 
@@ -157,4 +157,10 @@ const ViewRolePage = () => {
   );
 };
 
-export default ViewRolePage;
+export default function ViewRolePageWrapper() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <ViewRolePage />
+    </Suspense>
+  );
+}

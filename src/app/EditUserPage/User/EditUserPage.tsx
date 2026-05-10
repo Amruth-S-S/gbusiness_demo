@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { toast } from 'react-toastify';
@@ -21,7 +21,7 @@ interface User {
   updated_at: Date;
 }
 
-export default function EditUserPage() {
+function EditUserPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const userId = searchParams.get('id');
@@ -366,5 +366,13 @@ export default function EditUserPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function EditUserPageWrapper() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <EditUserPage />
+    </Suspense>
   );
 }
