@@ -49,6 +49,20 @@ type SelectedBoard = {
   boardName?: string;
 } | null;
 
+interface DemoMainBoard {
+  id: number;
+  name: string;
+  main_board_type?: string;
+}
+
+interface DemoBoard {
+  id: number;
+  name: string;
+  main_board_id: number;
+  is_active?: boolean;
+  customer_db_key?: string;
+}
+
 interface SidebarProps {
   clientUserId?: string | number;
 }
@@ -166,6 +180,22 @@ const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassw
   const [deletingBoards, setDeletingBoards] = useState<{ [key: string]: boolean }>({});
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
+
+  // Demo Reference
+  const [isDemoRefOpen, setIsDemoRefOpen] = useState(false);
+  const [demoMainBoards, setDemoMainBoards] = useState<DemoMainBoard[]>([]);
+  const [demoBoards, setDemoBoards] = useState<DemoBoard[]>([]);
+  const [activeDemoMainBoard, setActiveDemoMainBoard] = useState<string | null>(null);
+  const [isDemoLoading, setIsDemoLoading] = useState(false);
+
+  // Demo Create/Edit Board modal
+  const [showDemoModal, setShowDemoModal] = useState(false);
+  const [demoBoardName, setDemoBoardName] = useState('');
+  const [demoCustomerDbKey, setDemoCustomerDbKey] = useState('');
+  const [selectedDemoMainBoardId, setSelectedDemoMainBoardId] = useState<number | null>(null);
+  const [isCreatingDemoBoard, setIsCreatingDemoBoard] = useState(false);
+  const [isDemoEditMode, setIsDemoEditMode] = useState(false);
+  const [editingDemoBoardId, setEditingDemoBoardId] = useState<number | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [userData, setUserData] = useState<UserData>({ email: "", userId: "", userRole: "", userName: "" });
   const [isMounted, setIsMounted] = useState(false);
@@ -173,20 +203,12 @@ const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassw
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const [customerDbOptions, setCustomerDbOptions] = useState<string[]>(['customer_db_tally', 'customer_db_onegcp']);
+  const [customerDbOptions, setCustomerDbOptions] = useState<string[]>([]);
 
   const [confirmation, setConfirmation] = useState({ isOpen: false, message: '', boardId: '', mainBoardId: '' });
 
-  const [isOverviewOpen, setIsOverviewOpen] = useState(false);
-  const [overviewData, setOverviewData] = useState<MainBoard[]>([]);
-  const [overviewLoading, setOverviewLoading] = useState(false);
-  const [expandedOverviewBoard, setExpandedOverviewBoard] = useState<string | null>(null);
-
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
-  const DEMO_API_BASE_URL = API_BASE_URL;
   const EXCEL_API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
-
-  const isAdminUser = String(userData.userId) === '2';
 
   const toggleDropdown = () => setIsDropdownOpen(!isDropdownOpen);
 
@@ -205,8 +227,14 @@ const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassw
     if (!userId) return;
 
     const res = await fetch(
-      `${DEMO_API_BASE_URL}/demo/boards/available-customer-dbs?demo_user_id=${userId}`,
-      { method: "GET", headers: { "accept": "application/json", "X-API-Key": EXCEL_API_KEY } }
+      `${API_BASE_URL}/main-boards/boards/available-customer-dbs?user_id=${userId}`,
+      {
+        method: "GET",
+        headers: {
+          "accept": "application/json",
+          "X-API-Key": EXCEL_API_KEY
+        }
+      }
     );
 
     if (res.ok) {
@@ -219,6 +247,157 @@ const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassw
     console.error("Error:", err);
   }
 };
+
+  // ─── Demo Reference API ───────────────────────────────────────────────────────
+  const fetchDemoMainBoards = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/demo/main-boards`, {
+        headers: { accept: "application/json", "X-API-Key": EXCEL_API_KEY },
+      });
+      if (res.ok) {
+        const json = await res.json();
+        const list = Array.isArray(json) ? json : (json.data ?? json.items ?? []);
+        setDemoMainBoards(list);
+      }
+    } catch (err) {
+      console.error("Error fetching demo main boards:", err);
+    }
+  };
+
+  const fetchDemoBoards = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/demo/boards`, {
+        headers: { accept: "application/json", "X-API-Key": EXCEL_API_KEY },
+      });
+      if (res.ok) {
+        const json = await res.json();
+        const list = Array.isArray(json) ? json : (json.data ?? json.items ?? []);
+        setDemoBoards(list);
+      }
+    } catch (err) {
+      console.error("Error fetching demo boards:", err);
+    }
+  };
+
+  const toggleDemoRef = () => {
+    const opening = !isDemoRefOpen;
+    setIsDemoRefOpen(opening);
+    setActiveDemoMainBoard(null);
+    if (opening) {
+      setIsDemoLoading(true);
+      Promise.all([fetchDemoMainBoards(), fetchDemoBoards()]).finally(() =>
+        setIsDemoLoading(false)
+      );
+    }
+  };
+
+  const openDemoCreateModal = (e: React.MouseEvent, mbId: number) => {
+    e.stopPropagation();
+    setSelectedDemoMainBoardId(mbId);
+    setDemoBoardName('');
+    setDemoCustomerDbKey('');
+    setShowDemoModal(true);
+    fetchCustomerDbKeys();
+  };
+
+  const closeDemoModal = () => {
+    setShowDemoModal(false);
+    setDemoBoardName('');
+    setDemoCustomerDbKey('');
+    setSelectedDemoMainBoardId(null);
+    setIsDemoEditMode(false);
+    setEditingDemoBoardId(null);
+  };
+
+  const openDemoEditModal = (e: React.MouseEvent, board: DemoBoard) => {
+    e.stopPropagation();
+    setIsDemoEditMode(true);
+    setEditingDemoBoardId(board.id);
+    setSelectedDemoMainBoardId(board.main_board_id);
+    setDemoBoardName(board.name);
+    setDemoCustomerDbKey(board.customer_db_key ?? '');
+    setShowDemoModal(true);
+    fetchCustomerDbKeys();
+  };
+
+  const handleSaveDemoBoard = async () => {
+    if (!demoBoardName.trim() || !demoCustomerDbKey || !selectedDemoMainBoardId) return;
+    setIsCreatingDemoBoard(true);
+    try {
+      if (isDemoEditMode && editingDemoBoardId) {
+        const params = new URLSearchParams({
+          demo_user_id: String(clientUserId),
+          name: demoBoardName.trim(),
+          customer_db_key: demoCustomerDbKey,
+        });
+        const res = await fetch(`${API_BASE_URL}/demo/boards/${editingDemoBoardId}?${params}`, {
+          method: 'PUT',
+          headers: { accept: 'application/json', 'X-API-Key': EXCEL_API_KEY },
+        });
+        if (res.ok) {
+          toast.success('Demo board updated!');
+          closeDemoModal();
+          fetchDemoBoards();
+        } else {
+          const err = await res.json();
+          toast.error(err.detail || 'Failed to update demo board');
+        }
+      } else {
+        const params = new URLSearchParams({
+          demo_user_id: String(clientUserId),
+          main_board_id: String(selectedDemoMainBoardId),
+          name: demoBoardName.trim(),
+          customer_db_key: demoCustomerDbKey,
+        });
+        const res = await fetch(`${API_BASE_URL}/demo/boards?${params}`, {
+          method: 'POST',
+          headers: { accept: 'application/json', 'X-API-Key': EXCEL_API_KEY },
+        });
+        if (res.ok) {
+          toast.success('Demo board created!');
+          closeDemoModal();
+          fetchDemoBoards();
+        } else {
+          const err = await res.json();
+          toast.error(err.detail || 'Failed to create demo board');
+        }
+      }
+    } catch {
+      toast.error(isDemoEditMode ? 'Error updating demo board' : 'Error creating demo board');
+    } finally {
+      setIsCreatingDemoBoard(false);
+    }
+  };
+
+  const handleDeleteDemoBoard = (e: React.MouseEvent, board: DemoBoard) => {
+    e.stopPropagation();
+    const ConfirmToast = ({ closeToast }: { closeToast: () => void }) => (
+      <div className="p-3 bg-white rounded-lg shadow-lg">
+        <p className="text-gray-800 text-sm mb-3">Delete <strong>{board.name}</strong>? This cannot be undone.</p>
+        <div className="flex justify-end space-x-2">
+          <button onClick={() => closeToast()} className="px-3 py-1.5 text-sm bg-gray-200 text-gray-800 hover:bg-gray-300 rounded">Cancel</button>
+          <button
+            onClick={async () => {
+              closeToast();
+              try {
+                const res = await fetch(
+                  `${API_BASE_URL}/demo/boards/${board.id}?demo_user_id=${clientUserId}`,
+                  { method: 'DELETE', headers: { accept: 'application/json', 'X-API-Key': EXCEL_API_KEY } }
+                );
+                if (res.ok) { toast.success('Demo board deleted!'); fetchDemoBoards(); }
+                else toast.error('Failed to delete demo board');
+              } catch { toast.error('Error deleting demo board'); }
+            }}
+            className="px-3 py-1.5 text-sm bg-red-500 text-white hover:bg-red-600 rounded"
+          >Delete</button>
+        </div>
+      </div>
+    );
+    toast(<ConfirmToast closeToast={() => {}} />, {
+      position: 'top-center', autoClose: false, closeButton: false, closeOnClick: false, draggable: false,
+      className: '!bg-transparent !shadow-none',
+    });
+  };
 
   // ─── Password Update ──────────────────────────────────────────────────────────
   const handlePasswordUpdate = async () => {
@@ -584,10 +763,11 @@ const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassw
 
     showGlobalLoader("Creating Main Board...");
     try {
-      const response = await fetch(
-        `${DEMO_API_BASE_URL}/demo/main-boards?demo_user_id=${userId}&name=${encodeURIComponent(mainBoardName)}&main_board_type=standard`,
-        { method: "POST", headers: { accept: "application/json", "X-API-Key": EXCEL_API_KEY } }
-      );
+      const response = await fetch(`${API_BASE_URL}/main-boards/?user_id=${userId}`, {
+        method: "POST",
+        headers: { accept: "application/json", "Content-Type": "application/json", "X-API-Key": EXCEL_API_KEY },
+        body: JSON.stringify({ user_id: parseInt(userId), main_board_type: "ANALYSIS", name: mainBoardName }),
+      });
       const data = await response.json();
       if (!response.ok) { toast.error(`Failed to save: ${JSON.stringify(data)}`); return; }
       toast.success("Main board saved successfully!");
@@ -616,10 +796,11 @@ const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassw
     showGlobalLoader(isEditMode ? "Updating Board..." : "Creating Board...");
     try {
       if (isEditMode) {
-        const response = await fetch(
-          `${DEMO_API_BASE_URL}/demo/boards/${editingBoardId}?demo_user_id=${userId}&name=${encodeURIComponent(newBoardName.trim())}&customer_db_key=${encodeURIComponent(customerDbKey.trim())}`,
-          { method: "PUT", headers: { "accept": "application/json", "X-API-Key": EXCEL_API_KEY } }
-        );
+        const response = await fetch(`${API_BASE_URL}/main-boards/boards/${editingBoardId}?user_id=${userId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", "X-API-Key": EXCEL_API_KEY },
+          body: JSON.stringify({ main_board_id: parseInt(selectedBoard!.mainBoardId), name: newBoardName.trim(), customer_db_key: customerDbKey.trim() }),
+        });
         if (!response.ok) {
           const errorBody = await response.text();
           let msg = `Failed to update board: ${response.status}`;
@@ -631,10 +812,11 @@ const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassw
         router.push(`/Container?main_board_id=${selectedBoard?.mainBoardId}&board_id=${editingBoardId}`);
         mutateNavItems();
       } else {
-        const response = await fetch(
-          `${DEMO_API_BASE_URL}/demo/boards?demo_user_id=${userId}&main_board_id=${parseInt(selectedBoard!.mainBoardId)}&name=${encodeURIComponent(newBoardName.trim())}&customer_db_key=${encodeURIComponent(customerDbKey.trim())}`,
-          { method: "POST", headers: { "accept": "application/json", "X-API-Key": EXCEL_API_KEY } }
-        );
+        const response = await fetch(`${API_BASE_URL}/main-boards/boards/?user_id=${userId}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-API-Key": EXCEL_API_KEY },
+          body: JSON.stringify({ main_board_id: parseInt(selectedBoard!.mainBoardId), name: newBoardName.trim(), customer_db_key: customerDbKey.trim() }),
+        });
         if (!response.ok) {
           const errorBody = await response.text();
           let msg = `Failed to create board: ${response.status}`;
@@ -677,10 +859,10 @@ const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassw
       }
       if (!userId) { toast.error("User not found. Please log in again."); return; }
 
-      const response = await fetch(
-        `${DEMO_API_BASE_URL}/demo/main-boards/${mainBoardId}?demo_user_id=${userId}`,
-        { method: 'DELETE', headers: { 'Accept': 'application/json', 'X-API-Key': EXCEL_API_KEY } }
-      );
+      const response = await fetch(`${API_BASE_URL}/main-boards/${mainBoardId}?user_id=${userId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-API-Key': EXCEL_API_KEY },
+      });
       if (response.ok) {
         toast.success("Main board deleted successfully");
         mutateNavItems();
@@ -712,10 +894,10 @@ const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassw
                 }
                 const userId = currentUserData.userId;
                 if (!userId) { toast.error("User not found. Please log in again."); return; }
-                const response = await fetch(
-                  `${DEMO_API_BASE_URL}/demo/boards/${boardId}?demo_user_id=${userId}`,
-                  { method: 'DELETE', headers: { 'Accept': 'application/json', 'X-API-Key': EXCEL_API_KEY } }
-                );
+                const response = await fetch(`${API_BASE_URL}/main-boards/boards/${boardId}?user_id=${userId}`, {
+                  method: 'DELETE',
+                  headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-API-Key': EXCEL_API_KEY },
+                });
                 if (!response.ok) {
                   const errorData = await response.json();
                   throw new Error(errorData.message || "Failed to delete board");
@@ -768,10 +950,9 @@ const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassw
       }
       if (!userId) { toast.error('User ID not found. Please log in again.'); return; }
 
-      const response = await fetch(
-        `${DEMO_API_BASE_URL}/demo/boards/${boardId}?demo_user_id=${userId}`,
-        { method: 'GET', headers: { 'Accept': 'application/json', 'X-API-Key': EXCEL_API_KEY } }
-      );
+      const response = await fetch(`${API_BASE_URL}/main-boards/boards/${boardId}?user_id=${userId}`, {
+        method: 'GET', headers: { 'Accept': 'application/json', 'X-API-Key': EXCEL_API_KEY },
+      });
 
       if (response.ok) {
         const boardDetails = await response.json();
@@ -798,41 +979,22 @@ const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassw
   };
 
   // ─── SWR nav fetching ─────────────────────────────────────────────────────────
-  const demoNavFetcher = async () => {
-    const headers = { Accept: "application/json", "X-API-Key": EXCEL_API_KEY };
-    const [mainBoardsRes, boardsRes] = await Promise.all([
-      fetch(`${DEMO_API_BASE_URL}/demo/main-boards`, { headers }),
-      fetch(`${DEMO_API_BASE_URL}/demo/boards`, { headers }),
-    ]);
-    if (!mainBoardsRes.ok || !boardsRes.ok) throw new Error("Failed to fetch navigation data");
-    const mainBoardsData = await mainBoardsRes.json();
-    const boardsData = await boardsRes.json();
-    const mainBoards: any[] = mainBoardsData.data || [];
-    const boards: any[] = boardsData.data || [];
-    return mainBoards.map(mb => ({
-      main_board_id: String(mb.id),
-      name: mb.name,
-      boards: Object.fromEntries(
-        boards
-          .filter(b => b.main_board_id === mb.id)
-          .map(b => [String(b.id), { name: b.name, is_active: b.is_active }])
-      ),
-    }));
-  };
+  const fetcher = (url: string) =>
+    fetch(url, { headers: { Accept: "application/json", "X-API-Key": EXCEL_API_KEY } })
+      .then(res => { if (!res.ok) throw new Error("Failed to fetch"); return res.json(); });
 
   const { mutate: mutateNavItems } = useSWR(
-    `${DEMO_API_BASE_URL}/demo/nav`,
-    demoNavFetcher,
+    clientUserId ? `${API_BASE_URL}/main-boards/get_all_info_tree?user_id=${clientUserId}` : null,
+    fetcher,
     {
-      revalidateOnMount: true,
       revalidateOnFocus: false,
-      dedupingInterval: 5000,
+      dedupingInterval: 60000,
       onSuccess: data => setNavItems(data),
       onError: () => toast.error("Error loading navigation data"),
     }
   );
 
-  useEffect(() => { mutateNavItems(); }, []);
+  useEffect(() => { if (refreshTrigger) mutateNavItems(); }, [refreshTrigger]);
   const forceRefresh = () => mutateNavItems();
 
   const toggleMainBoard = (mainBoardId: string) => {
@@ -847,33 +1009,6 @@ const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassw
 };
   const handleBoardClick = (boardId: string) => { setActiveBoardId(boardId); closeMobileMenu(); };
 
-  // ─── Demo Reference ───────────────────────────────────────────────────────────
-  const handleDemoReference = async () => {
-    setIsOverviewOpen(true);
-    setOverviewLoading(true);
-    try {
-      const res = await fetch(`${DEMO_API_BASE_URL}/demo/overview`, {
-        headers: { Accept: "application/json", "X-API-Key": EXCEL_API_KEY },
-      });
-      if (!res.ok) throw new Error("Failed to fetch overview");
-      const json = await res.json();
-      const rawData: any[] = json.data || (Array.isArray(json) ? json : []);
-      const mapped: MainBoard[] = rawData.map((mb: any) => ({
-        main_board_id: String(mb.id ?? mb.main_board_id),
-        name: mb.name,
-        boards: Array.isArray(mb.boards)
-          ? Object.fromEntries(mb.boards.map((b: any) => [String(b.id), { name: b.name, is_active: b.is_active ?? true }]))
-          : (mb.boards || {}),
-      }));
-      setOverviewData(mapped);
-    } catch {
-      toast.error("Failed to load demo overview");
-      setIsOverviewOpen(false);
-    } finally {
-      setOverviewLoading(false);
-    }
-  };
-
   // ─── Highlight search match ───────────────────────────────────────────────────
   const highlight = (text: string, query: string) =>
     query ? text.replace(new RegExp(`(${query})`, 'gi'), '<mark class="bg-yellow-200 px-1 rounded">$1</mark>') : text;
@@ -884,76 +1019,6 @@ const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassw
   return (
     <>
       {globalLoading && <GlobalLoader message={globalLoadingMessage} />}
-
-      {/* ── Demo Reference Modal ───────────────────────────────────────────── */}
-      {isOverviewOpen && (
-        <div className="fixed inset-0 z-[998] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setIsOverviewOpen(false)}>
-          <div className="bg-white rounded-xl shadow-2xl w-[92%] max-w-md max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
-              <div className="flex items-center gap-2">
-                <NotebookText className="w-4 h-4 text-emerald-600" />
-                <span className="font-semibold text-sm text-gray-800">Demo Reference</span>
-              </div>
-              <button onClick={() => setIsOverviewOpen(false)} className="p-1 hover:bg-gray-100 rounded-lg transition-colors">
-                <X className="w-4 h-4 text-gray-500" />
-              </button>
-            </div>
-
-            {/* Body */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-2">
-              {overviewLoading ? (
-                <div className="flex flex-col items-center justify-center py-10 gap-3">
-                  <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-                  <p className="text-xs text-gray-500">Loading demo overview...</p>
-                </div>
-              ) : overviewData.length === 0 ? (
-                <p className="text-center text-xs text-gray-400 py-8">No demo data available.</p>
-              ) : (
-                overviewData.map(mb => {
-                  const mbId = String(mb.main_board_id);
-                  const isExp = expandedOverviewBoard === mbId;
-                  const activeBoards = Object.entries(mb.boards).filter(([, b]) => b.is_active);
-                  return (
-                    <div key={mbId} className="border border-gray-200 rounded-lg overflow-hidden">
-                      <button
-                        className="w-full flex items-center justify-between px-3 py-2.5 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
-                        onClick={() => setExpandedOverviewBoard(isExp ? null : mbId)}
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <ChartColumnDecreasing className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
-                          <span className="text-xs font-semibold text-gray-800 truncate">{mb.name}</span>
-                          <span className="text-[10px] text-gray-400 flex-shrink-0">({activeBoards.length})</span>
-                        </div>
-                        {isExp ? <ChevronDown className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />}
-                      </button>
-                      {isExp && (
-                        <div className="divide-y divide-gray-100">
-                          {activeBoards.length === 0 ? (
-                            <p className="text-[11px] text-gray-400 px-4 py-2">No boards</p>
-                          ) : (
-                            activeBoards.map(([boardId, board]) => (
-                              <Link
-                                key={boardId}
-                                href={{ pathname: '/Container', query: { main_board_id: mbId, board_id: boardId } }}
-                                onClick={() => { setIsOverviewOpen(false); setActiveBoardId(boardId); closeMobileMenu(); }}
-                                className="flex items-center gap-2 px-4 py-2 hover:bg-blue-50 transition-colors"
-                              >
-                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
-                                <span className="text-xs text-gray-700 truncate">{board.name}</span>
-                              </Link>
-                            ))
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
       {isMobile && (
         <button onClick={toggleMobileMenu} className="fixed top-3 left-3 z-50 p-2 bg-blue-600 text-white rounded-lg shadow-lg hover:bg-blue-700 transition-colors" aria-label="Toggle menu">
@@ -1021,13 +1086,8 @@ const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassw
         {(isSidebarOpen || isMobile) && (
           <div className="px-3 py-2">
             <button
-              onClick={() => { if (isAdminUser) { setIsModalOpen(true); closeMobileMenu(); } }}
-              disabled={!isAdminUser}
-              title={!isAdminUser ? "Only admin users can create main boards" : undefined}
-              className={`w-full py-2 px-3 rounded-lg font-medium text-sm transition-all duration-200 shadow-md flex items-center justify-center gap-2 group
-                ${isAdminUser
-                  ? 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white hover:shadow-lg cursor-pointer'
-                  : 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none'}`}
+              onClick={() => { setIsModalOpen(true); closeMobileMenu(); }}
+              className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white py-2 px-3 rounded-lg font-medium text-sm transition-all duration-200 shadow-md hover:shadow-lg flex items-center justify-center gap-2 group"
             >
               <Plus className="w-3.5 h-3.5 group-hover:rotate-90 transition-transform duration-200" />
               Create Main Board
@@ -1079,7 +1139,7 @@ const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassw
             )}
 
             {/* Dashboard link */}
-            <div className="space-y-0.5 mb-2">
+            <div className="space-y-0.5 mb-4">
               {(!searchQuery.trim() || "dashboard".includes(searchQuery.toLowerCase())) && (
                 <Link href="/Dashboard" onClick={closeMobileMenu}
                   className="flex items-center p-2 rounded-lg cursor-pointer transition-all duration-200 group hover:bg-blue-700/40 hover:shadow-sm"
@@ -1095,18 +1155,107 @@ const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassw
               )}
             </div>
 
-            {/* Demo Reference button */}
-            {/* {(isSidebarOpen || isMobile) && !searchQuery.trim() && (
-              <div className="mb-4">
-                <button
-                  onClick={handleDemoReference}
-                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-all duration-200"
+            {/* Demo Reference dropdown */}
+            {(!searchQuery.trim() || "demo reference".includes(searchQuery.toLowerCase())) && (
+              <div className="space-y-0.5 mb-4">
+                <div
+                  className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all duration-200 group ${isDemoRefOpen ? 'bg-blue-700/60 shadow-md border border-blue-500/30' : 'hover:bg-blue-700/30'}`}
+                  onClick={toggleDemoRef}
+                  onMouseEnter={() => setHoveredItem('demo-ref')}
+                  onMouseLeave={() => setHoveredItem(null)}
                 >
-                  <NotebookText className="w-3.5 h-3.5 flex-shrink-0" />
-                  Demo Reference
-                </button>
+                  <div className="flex items-center min-w-0 flex-1">
+                    {isDemoRefOpen
+                      ? <ChevronDown className="w-3.5 h-3.5 mr-1.5 text-gray-700 flex-shrink-0" />
+                      : <ChevronRight className="w-3.5 h-3.5 mr-1.5 text-gray-700 flex-shrink-0" />
+                    }
+                    {(isSidebarOpen || isMobile) && (
+                      <span className="font-medium text-xs truncate">Demo Reference</span>
+                    )}
+                  </div>
+                </div>
+
+                {isDemoRefOpen && (isSidebarOpen || isMobile) && (
+                  <div className="ml-5 space-y-0.5 pb-1">
+                    {isDemoLoading ? (
+                      <div className="text-xs text-gray-400 px-2 py-1">Loading...</div>
+                    ) : !Array.isArray(demoMainBoards) || demoMainBoards.length === 0 ? (
+                      <div className="text-xs text-gray-400 px-2 py-1">No demo boards found</div>
+                    ) : (
+                      demoMainBoards.map(mb => {
+                        const mbId = String(mb.id);
+                        const isActiveDemoMb = activeDemoMainBoard === mbId;
+                        const boardsForMb = Array.isArray(demoBoards)
+                          ? demoBoards.filter(b => b.main_board_id === mb.id)
+                          : [];
+                        return (
+                          <div key={mbId} className="space-y-0.5">
+                            <div
+                              className={`flex items-center justify-between p-2 rounded-md cursor-pointer transition-all duration-200 group ${isActiveDemoMb ? 'bg-blue-600/50 shadow-sm border border-blue-400/30' : 'hover:bg-blue-700/25'}`}
+                              onClick={() => setActiveDemoMainBoard(prev => prev === mbId ? null : mbId)}
+                            >
+                              <div className="flex items-center min-w-0 flex-1">
+                                {isActiveDemoMb
+                                  ? <ChevronDown className="w-3 h-3 mr-1.5 text-gray-600 flex-shrink-0" />
+                                  : <ChevronRight className="w-3 h-3 mr-1.5 text-gray-600 flex-shrink-0" />
+                                }
+                                <span className="text-xs font-medium truncate">{mb.name}</span>
+                              </div>
+                              <button
+                                onClick={e => openDemoCreateModal(e, mb.id)}
+                                className="p-1 hover:bg-blue-600 rounded transition-colors duration-200 opacity-0 group-hover:opacity-100 flex-shrink-0"
+                                title={`Add board to ${mb.name}`}
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+
+                            {isActiveDemoMb && (
+                              <div className="ml-4 space-y-0.5">
+                                {boardsForMb.length === 0 ? (
+                                  <div className="text-xs text-gray-400 px-2 py-1">No boards</div>
+                                ) : (
+                                  boardsForMb.map(board => (
+                                    <div
+                                      key={board.id}
+                                      className="flex items-center justify-between p-2 rounded-md hover:bg-blue-700/20 cursor-pointer group transition-all duration-200"
+                                    >
+                                      <Link
+                                        href={{ pathname: '/DemoContainer', query: { board_id: board.id, main_board_id: mb.id } }}
+                                        onClick={closeMobileMenu}
+                                        className="flex-1 text-black text-xs font-medium truncate"
+                                      >
+                                        {board.name}
+                                      </Link>
+                                      <div className="flex space-x-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                                        <button
+                                          onClick={e => openDemoEditModal(e, board)}
+                                          className="p-1 hover:bg-blue-600 rounded transition-colors duration-200"
+                                          title="Edit board"
+                                        >
+                                          <Edit2 className="w-3 h-3" />
+                                        </button>
+                                        <button
+                                          onClick={e => handleDeleteDemoBoard(e, board)}
+                                          className="p-1 hover:bg-red-600 rounded transition-colors duration-200"
+                                          title="Delete board"
+                                        >
+                                          <Trash2 className="w-3 h-3" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
               </div>
-            )} */}
+            )}
 
             {/* Main boards */}
             <div className="space-y-1 mb-4">
@@ -1137,7 +1286,7 @@ const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassw
                         )}
                       </div>
 
-                      {(isSidebarOpen || isMobile) && !searchQuery.trim() && isAdminUser && (
+                      {(isSidebarOpen || isMobile) && !searchQuery.trim() && (
                         <div className="flex space-x-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                           <Plus className="p-1 hover:bg-blue-600 rounded transition-colors duration-200 w-5 h-5" onClick={e => handlePlusClick(e, mbId)} />
                           <button onClick={e => handleDeleteMainBoard(e, mbId, item.name)} className="p-1 hover:bg-red-600 rounded transition-colors duration-200" title="Delete Main Board">
@@ -1164,7 +1313,7 @@ const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassw
                               >
                                 {searchQuery ? <span dangerouslySetInnerHTML={{ __html: highlight(board.name, searchQuery) }} /> : board.name}
                               </Link>
-                              {!searchQuery.trim() && isAdminUser && (
+                              {!searchQuery.trim() && (
                                 <div className="flex space-x-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                                   <button
                                     onClick={e => { e.stopPropagation(); handleEditClick(boardId, item.main_board_id); }}
@@ -1436,6 +1585,74 @@ const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassw
                 <button onClick={handleCreateBoard} disabled={!newBoardName.trim() || !customerDbKey.trim()}
                   className="px-4 py-2 text-xs font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200">
                   {isEditMode ? 'Update Board' : 'Create Board'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Create Demo Board Modal ──────────────────────────────────────── */}
+        {showDemoModal && selectedDemoMainBoardId !== null && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center" onClick={closeDemoModal}>
+            <div className="bg-white rounded-xl shadow-2xl p-5 w-full max-w-sm mx-4 relative" onClick={e => e.stopPropagation()}>
+              <div className="mb-4">
+                <button className="absolute top-3 right-3 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full p-1.5 transition-all duration-200" onClick={closeDemoModal}>
+                  <X className="w-4 h-4" />
+                </button>
+                <h2 className="text-base font-bold text-gray-900">{isDemoEditMode ? 'Edit Demo Board' : 'Create a Demo Board'}</h2>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {isDemoEditMode ? `Board ID: ${editingDemoBoardId} • Main Board ID: ${selectedDemoMainBoardId}` : `Main Board ID: ${selectedDemoMainBoardId}`}
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                    Board Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={demoBoardName}
+                    onChange={e => setDemoBoardName(e.target.value)}
+                    placeholder="Enter board name"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                    Customer Database Key <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={demoCustomerDbKey}
+                    onChange={e => setDemoCustomerDbKey(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+                  >
+                    <option value="">Select database</option>
+                    {customerDbOptions.map(db => (
+                      <option key={db} value={db}>{db}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {demoBoardName.trim() && demoCustomerDbKey && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-2.5">
+                    <p className="text-xs text-blue-800"><span className="font-semibold">{isDemoEditMode ? 'Ready to update:' : 'Ready to create:'}</span> {demoBoardName}</p>
+                    <p className="text-xs text-blue-600 mt-0.5">Database: {demoCustomerDbKey}</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-2 mt-5">
+                <button onClick={closeDemoModal} className="px-4 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200">
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveDemoBoard}
+                  disabled={!demoBoardName.trim() || !demoCustomerDbKey || isCreatingDemoBoard}
+                  className="px-4 py-2 text-xs font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+                >
+                  {isCreatingDemoBoard ? (isDemoEditMode ? 'Updating...' : 'Creating...') : (isDemoEditMode ? 'Update Board' : 'Create Board')}
                 </button>
               </div>
             </div>

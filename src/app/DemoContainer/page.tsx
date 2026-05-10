@@ -342,7 +342,7 @@ export default function Page() {
 
   // Filter repository prompts based on search term
   const filteredRepositoryPrompts = prompts.filter(prompt =>
-    prompt.prompt_text.toLowerCase().includes(searchTermRepository.toLowerCase()) ||
+    (prompt.prompt_text ?? '').toLowerCase().includes(searchTermRepository.toLowerCase()) ||
     (prompt.user_name && prompt.user_name.toLowerCase().includes(searchTermRepository.toLowerCase()))
   );
   // const [prompts, setPrompts] = useState([]);
@@ -905,6 +905,11 @@ useEffect(() => {
 
       // Get logged-in user info
       let loggedInUserName = localStorage.getItem('loggedInUserName') || 'Unknown User';
+      let importUserId = '';
+      try {
+        const raw = sessionStorage.getItem('currentUserData');
+        if (raw) { const d = JSON.parse(raw); importUserId = String(d.userId || d.user_id || d.id || ''); }
+      } catch { /* ignore */ }
 
       // Import each prompt
       let successCount = 0;
@@ -912,24 +917,22 @@ useEffect(() => {
 
       for (const prompt of promptsToImport) {
         try {
-          const promptData = {
-            board_id: boardId,
+          const params = new URLSearchParams({
+            demo_user_id: importUserId,
+            board_id: String(boardId),
             prompt_text: prompt.prompt_text,
-            prompt_title: prompt.prompt_title || 'Imported Prompt',
             prompt_out: "out_string",
             user_name: loggedInUserName,
-            created_by: loggedInUserName
-          };
+          });
 
           const response = await fetch(
-            `${API_BASE_URL}/main-boards/boards/prompts/`,
+            `${API_BASE_URL}/demo/prompts?${params}`,
             {
               method: "POST",
               headers: {
-                "Content-Type": "application/json",
+                "accept": "application/json",
                 "X-API-Key": EXCEL_API_KEY
               },
-              body: JSON.stringify(promptData),
             }
           );
 
@@ -1009,7 +1012,7 @@ useEffect(() => {
 
   // Filter prompts based on search term
   const filteredPrompts = prompts.filter(prompt =>
-    prompt.prompt_text.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (prompt.prompt_text ?? '').toLowerCase().includes(searchTerm.toLowerCase()) ||
     (prompt.user_name && prompt.user_name.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
@@ -1503,21 +1506,17 @@ useEffect(() => {
     try {
       setCommentsLoading(true);
       const response = await fetch(
-        `${API_BASE_URL}/main-boards/boards/prompts/${promptId}/comments?order_by=created_at&order_dir=DESC`,
+        `${API_BASE_URL}/demo/prompt-comments/${promptId}?order_by=created_at&order_dir=DESC`,
         {
           headers: {
-            "Content-Type": "application/json",
+            "accept": "application/json",
             "X-API-Key": EXCEL_API_KEY,
           },
         }
       );
       if (!response.ok) throw new Error('Failed to fetch comments');
       const data = await response.json();
-
-      // 👇 ADD THIS — check browser console to see actual field names
-      // console.log('Comments API response:', JSON.stringify(data, null, 2));
-
-      const comments: PromptComment[] = Array.isArray(data) ? data : data.comments || [];
+      const comments: PromptComment[] = Array.isArray(data) ? data : (data.data ?? data.comments ?? []);
       setCommentsMap(prev => ({ ...prev, [promptId]: comments }));
     } catch (error) {
       console.error('Error fetching comments:', error);
@@ -1544,49 +1543,52 @@ useEffect(() => {
     e.preventDefault();
     if (!commentText.trim() || !currentPromptId) return;
 
+    let demoUserId = '';
+    let demoUserName = '';
+    try {
+      const raw = sessionStorage.getItem('currentUserData');
+      if (raw) { const d = JSON.parse(raw); demoUserId = String(d.userId || d.user_id || d.id || ''); demoUserName = d.userName || ''; }
+    } catch { /* ignore */ }
+
     try {
       setCommentSaving(true);
 
       if (editingCommentId !== null) {
+        const params = new URLSearchParams({ demo_user_id: demoUserId, comment_text: commentText.trim() });
         const response = await fetch(
-          `${API_BASE_URL}/main-boards/boards/prompts/comments/${editingCommentId}?comment_text=${encodeURIComponent(commentText)}`,
+          `${API_BASE_URL}/demo/prompt-comments/${editingCommentId}?${params}`,
           {
             method: "PUT",
-            headers: {
-              "Content-Type": "application/json",
-              "X-API-Key": EXCEL_API_KEY,
-            },
+            headers: { "accept": "application/json", "X-API-Key": EXCEL_API_KEY },
           }
         );
         if (!response.ok) throw new Error('Failed to update comment');
         const data = await response.json();
-        const updatedComment: PromptComment = data.comment; // ✅ unwrap from { success, comment }
+        const updatedComment: PromptComment = data.data ?? data.comment ?? data;
 
         setCommentsMap(prev => ({
           ...prev,
           [currentPromptId]: (prev[currentPromptId] || []).map(c =>
-            c.id === editingCommentId ? updatedComment : c // ✅ replace with actual API response
+            c.id === editingCommentId ? updatedComment : c
           )
         }));
         setEditingCommentId(null);
       } else {
+        const params = new URLSearchParams({ demo_user_id: demoUserId, comment_text: commentText.trim(), user_name: demoUserName });
         const response = await fetch(
-          `${API_BASE_URL}/main-boards/boards/prompts/${currentPromptId}/comments?comment_text=${encodeURIComponent(commentText)}`,
+          `${API_BASE_URL}/demo/prompt-comments/${currentPromptId}?${params}`,
           {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-API-Key": EXCEL_API_KEY,
-            },
+            headers: { "accept": "application/json", "X-API-Key": EXCEL_API_KEY },
           }
         );
         if (!response.ok) throw new Error('Failed to create comment');
         const data = await response.json();
-        const newComment: PromptComment = data.comment ?? data; // ✅ unwrap if wrapped
+        const newComment: PromptComment = data.data ?? data.comment ?? data;
 
         setCommentsMap(prev => ({
           ...prev,
-          [currentPromptId]: [newComment, ...(prev[currentPromptId] || [])] // ✅ shows immediately
+          [currentPromptId]: [newComment, ...(prev[currentPromptId] || [])]
         }));
       }
 
@@ -1611,13 +1613,18 @@ useEffect(() => {
   // Handle deleting a comment
   const handleDeleteComment = async (commentId: number) => {
     if (!currentPromptId) return;
+    let demoUserId = '';
+    try {
+      const raw = sessionStorage.getItem('currentUserData');
+      if (raw) { const d = JSON.parse(raw); demoUserId = String(d.userId || d.user_id || d.id || ''); }
+    } catch { /* ignore */ }
     try {
       setDeletingCommentId(commentId);
       const response = await fetch(
-        `${API_BASE_URL}/main-boards/boards/prompts/comments/${commentId}`,
+        `${API_BASE_URL}/demo/prompt-comments/${commentId}?demo_user_id=${demoUserId}`,
         {
           method: "DELETE",
-          headers: { "X-API-Key": EXCEL_API_KEY },
+          headers: { "accept": "application/json", "X-API-Key": EXCEL_API_KEY },
         }
       );
       if (!response.ok) throw new Error('Failed to delete comment');
@@ -3054,7 +3061,7 @@ const SpeechRecognition =
 
       try {
         const response = await fetch(
-          `${API_BASE_URL}/main-boards/boards/prompts/boards/${boardId}`,
+          `${API_BASE_URL}/demo/prompts/board/${mainBoardId}/${boardId}`,
           {
             headers: {
               "X-API-Key": EXCEL_API_KEY
@@ -3069,7 +3076,8 @@ const SpeechRecognition =
           throw new Error("Failed to fetch prompts");
         }
 
-        const data: Prompt[] = await response.json();
+        const json = await response.json();
+        const data: Prompt[] = Array.isArray(json) ? json : (json.data ?? json.items ?? []);
         // console.log("Fetched prompts data:", data);
 
         setPrompts(data);
@@ -3079,12 +3087,12 @@ const SpeechRecognition =
           data.map(async (p: Prompt) => {
             try {
               const res = await fetch(
-                `${API_BASE_URL}/main-boards/boards/prompts/${p.id}/comments?order_by=created_at&order_dir=DESC`,
-                { headers: { "Content-Type": "application/json", "X-API-Key": EXCEL_API_KEY } }
+                `${API_BASE_URL}/demo/prompt-comments/${p.id}?order_by=created_at&order_dir=DESC`,
+                { headers: { "accept": "application/json", "X-API-Key": EXCEL_API_KEY } }
               );
               if (!res.ok) return [p.id, []];
               const cData = await res.json();
-              const comments: PromptComment[] = Array.isArray(cData) ? cData : cData.comments || [];
+              const comments: PromptComment[] = Array.isArray(cData) ? cData : (cData.data ?? cData.comments ?? []);
               return [p.id, comments];
             } catch {
               return [p.id, []];
@@ -3120,18 +3128,11 @@ const SpeechRecognition =
     }
 
     try {
-      const url = new URL(`${API_BASE_URL}/main-boards/boards/prompts/run_prompt_v4?`);
+      const url = new URL(`${API_BASE_URL}/demo/prompts/${boardId}/run`);
       url.searchParams.append("input_text", promptText);
-      url.searchParams.append("board_id", boardId);
-      url.searchParams.append("user_name", "");
       url.searchParams.append("use_cache", "true");
 
-      const response = await axios.post(url.href, {
-        input_text: promptText,
-        board_id: boardId,
-        user_name: " ",
-        use_cache: true,
-      }, {
+      const response = await axios.post(url.href, null, {
         headers: { "X-API-Key": EXCEL_API_KEY },
       });
 
@@ -3252,33 +3253,16 @@ const SpeechRecognition =
     }
 
     try {
-      const url = new URL(
-        `${API_BASE_URL}/main-boards/boards/prompts/run_prompt_v4?`
-      );
-
-      // Append parameters
+      const url = new URL(`${API_BASE_URL}/demo/prompts/${boardId}/run`);
       url.searchParams.append("input_text", newPromptName.trim());
-      url.searchParams.append("board_id", boardId);
-      url.searchParams.append("user_name", "");
       url.searchParams.append("use_cache", "true");
 
       // console.log("Making request to:", url.href);
 
       // Make the POST request with Axios
-      const response = await axios.post(
-        url.href,
-        {
-          input_text: newPromptName.trim(),
-          board_id: boardId,
-          user_name: "",
-          use_cache: true,
-        },
-        {
-          headers: {
-            "X-API-Key": EXCEL_API_KEY
-          },
-        }
-      );
+      const response = await axios.post(url.href, null, {
+        headers: { "X-API-Key": EXCEL_API_KEY },
+      });
 
       // Process the API response
       if (response?.data) {
@@ -3530,13 +3514,19 @@ const SpeechRecognition =
   };
 
   const performDelete = async (promptId: string) => {
+    let demoUserId = '';
+    try {
+      const raw = sessionStorage.getItem('currentUserData');
+      if (raw) { const d = JSON.parse(raw); demoUserId = String(d.userId || d.user_id || d.id || ''); }
+    } catch { /* ignore */ }
 
     try {
       const response = await fetch(
-        `${API_BASE_URL}/main-boards/boards/prompts/${promptId}`,
+        `${API_BASE_URL}/demo/prompts/${promptId}?demo_user_id=${demoUserId}`,
         {
           method: "DELETE",
           headers: {
+            "accept": "application/json",
             "X-API-Key": EXCEL_API_KEY
           },
         }
@@ -3625,31 +3615,36 @@ const SpeechRecognition =
     // console.log("Logged-in User:", loggedInUserName);
     // console.log("User ID:", loggedInUserId);
 
-    // Prepare request body
-    const promptData = {
-      board_id: boardId,
-      prompt_text: newPromptName.trim(),
-      prompt_out: "out_string", // Default value as per the API example
-      user_name: loggedInUserName, // Use the logged-in user's name
-      created_by: loggedInUserName
-    };
-    // console.log("Prompt Data:", promptData);
-
     // Determine the URL and method based on edit mode
-    const url = editPromptId
-      ? `${API_BASE_URL}/main-boards/boards/prompts/${editPromptId}` // Update endpoint
-      : `${API_BASE_URL}/main-boards/boards/prompts/`; // Create endpoint
-
+    let url: string;
     const method = editPromptId ? "PUT" : "POST";
+
+    if (editPromptId) {
+      const params = new URLSearchParams({
+        demo_user_id: String(loggedInUserId),
+        prompt_text: newPromptName.trim(),
+        prompt_out: "out_string",
+        user_name: loggedInUserName,
+      });
+      url = `${API_BASE_URL}/demo/prompts/${editPromptId}?${params}`;
+    } else {
+      const params = new URLSearchParams({
+        demo_user_id: String(loggedInUserId),
+        board_id: String(boardId),
+        prompt_text: newPromptName.trim(),
+        prompt_out: "out_string",
+        user_name: loggedInUserName,
+      });
+      url = `${API_BASE_URL}/demo/prompts?${params}`;
+    }
 
     try {
       const response = await fetch(url, {
         method,
         headers: {
-          "Content-Type": "application/json",
+          "accept": "application/json",
           "X-API-Key": EXCEL_API_KEY
         },
-        body: JSON.stringify(promptData),
       });
 
       // Handle response
@@ -3660,7 +3655,8 @@ const SpeechRecognition =
         return;
       }
 
-      const newPromptData = await response.json();
+      const rawResponse = await response.json();
+      const newPromptData = rawResponse?.data ?? rawResponse;
       // console.log("API Response Data:", newPromptData);
 
       // Update the prompts state
