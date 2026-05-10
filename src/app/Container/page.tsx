@@ -41,6 +41,7 @@ import ParameterSettings from "../components/ParameterSettings";
 import { usePathname } from 'next/navigation';
 import TallySetting from "../components/TallySetting";
 import ManageParameterSetting from "../components/Manageparametersetting";
+import KpiUpdates from "../components/KpiUpdates";
 
 ChartJS.register(
   ArcElement,
@@ -477,6 +478,7 @@ useEffect(() => {
         userId = String(parsed.userId);
       } catch (e) { }
     }
+    userId = userId || '2';
     if (!userId) { toast.error("User session not found."); return; }
 
     setIsDeletingDataSource(true);
@@ -532,6 +534,7 @@ useEffect(() => {
         console.error("Failed to parse session:", e);
       }
     }
+    userId = userId || '2';
 
     if (!userId) {
       toast.error("User session not found. Please log in again.");
@@ -589,6 +592,7 @@ useEffect(() => {
         userId = String(parsed.userId);
       } catch (e) { }
     }
+    userId = userId || '2';
 
     if (!userId || !boardId) return;
 
@@ -764,6 +768,7 @@ useEffect(() => {
         console.error("Failed to parse currentUserData from sessionStorage:", e);
       }
     }
+    userId = userId || '2';
 
     if (!userId) {
       toast.error("User session not found. Please log in again.");
@@ -976,18 +981,20 @@ useEffect(() => {
       try { userId = JSON.parse(stored).userId || ""; } catch { /* */ }
     }
     if (!userId) return;
-    fetch(`${API_BASE_URL}/main-boards/get_all_info_tree?user_id=${userId}`, {
-      headers: { Accept: "application/json", "X-API-Key": EXCEL_API_KEY },
-    })
-      .then(r => r.ok ? r.json() : null)
-      .then((data: Array<{ id?: string | number; main_board_id: string; name: string; boards: Record<string, { name: string; is_active: boolean }> }> | null) => {
-        if (!Array.isArray(data)) return;
-        const mb = data.find(m => String(m.main_board_id) === String(mainBoardId) || String(m.id) === String(mainBoardId));
-        if (mb) {
-          setMainBoardDisplayName(mb.name || "");
-          const board = mb.boards?.[boardId];
-          if (board) setBoardDisplayName(board.name || "");
-        }
+    const demoHeaders = { Accept: "application/json", "X-API-Key": EXCEL_API_KEY };
+    Promise.all([
+      fetch(`${API_BASE_URL}/demo/main-boards`, { headers: demoHeaders }),
+      fetch(`${API_BASE_URL}/demo/boards`, { headers: demoHeaders }),
+    ])
+      .then(async ([mbRes, bRes]) => {
+        const mbJson = mbRes.ok ? await mbRes.json() : null;
+        const bJson = bRes.ok ? await bRes.json() : null;
+        const mainBoards: Array<{ id: number; name: string }> = mbJson?.data || [];
+        const boards: Array<{ id: number; main_board_id: number; name: string }> = bJson?.data || [];
+        const mb = mainBoards.find(m => String(m.id) === String(mainBoardId));
+        if (mb) setMainBoardDisplayName(mb.name || "");
+        const board = boards.find(b => String(b.id) === String(boardId));
+        if (board) setBoardDisplayName(board.name || "");
       })
       .catch(() => { /* silently fail */ });
   }, [mainBoardId, boardId]);
@@ -1022,7 +1029,7 @@ useEffect(() => {
   const [user, setUser] = useState({
     name: "",
     email: "",
-    id: "",
+    id: "2",
     role: "",
   });
 
@@ -1502,21 +1509,12 @@ useEffect(() => {
     try {
       setCommentsLoading(true);
       const response = await fetch(
-        `${API_BASE_URL}/main-boards/boards/prompts/${promptId}/comments?order_by=created_at&order_dir=DESC`,
-        {
-          headers: {
-            "Content-Type": "application/json",
-            "X-API-Key": EXCEL_API_KEY,
-          },
-        }
+        `${API_BASE_URL}/demo/prompt-comments/${promptId}?order_by=created_at&order_dir=ASC`,
+        { headers: { "accept": "application/json", "X-API-Key": EXCEL_API_KEY } }
       );
       if (!response.ok) throw new Error('Failed to fetch comments');
-      const data = await response.json();
-
-      // 👇 ADD THIS — check browser console to see actual field names
-      // console.log('Comments API response:', JSON.stringify(data, null, 2));
-
-      const comments: PromptComment[] = Array.isArray(data) ? data : data.comments || [];
+      const json = await response.json();
+      const comments: PromptComment[] = json.data || [];
       setCommentsMap(prev => ({ ...prev, [promptId]: comments }));
     } catch (error) {
       console.error('Error fetching comments:', error);
@@ -1545,47 +1543,42 @@ useEffect(() => {
 
     try {
       setCommentSaving(true);
+      let demoUserId = '';
+      if (typeof window !== 'undefined') {
+        const s = sessionStorage.getItem('currentUserData');
+        if (s) { try { demoUserId = JSON.parse(s).userId || ''; } catch { /* */ } }
+      }
 
       if (editingCommentId !== null) {
         const response = await fetch(
-          `${API_BASE_URL}/main-boards/boards/prompts/comments/${editingCommentId}?comment_text=${encodeURIComponent(commentText)}`,
-          {
-            method: "PUT",
-            headers: {
-              "Content-Type": "application/json",
-              "X-API-Key": EXCEL_API_KEY,
-            },
-          }
+          `${API_BASE_URL}/demo/prompt-comments/${editingCommentId}?demo_user_id=${demoUserId}&comment_text=${encodeURIComponent(commentText)}`,
+          { method: "PUT", headers: { "accept": "application/json", "X-API-Key": EXCEL_API_KEY } }
         );
         if (!response.ok) throw new Error('Failed to update comment');
         const data = await response.json();
-        const updatedComment: PromptComment = data.comment; // ✅ unwrap from { success, comment }
+        const updatedComment: PromptComment = data.data ?? data;
 
         setCommentsMap(prev => ({
           ...prev,
           [currentPromptId]: (prev[currentPromptId] || []).map(c =>
-            c.id === editingCommentId ? updatedComment : c // ✅ replace with actual API response
+            c.id === editingCommentId ? updatedComment : c
           )
         }));
         setEditingCommentId(null);
       } else {
+        const s = sessionStorage.getItem('currentUserData');
+        const userName = s ? (JSON.parse(s).userName || '') : '';
         const response = await fetch(
-          `${API_BASE_URL}/main-boards/boards/prompts/${currentPromptId}/comments?comment_text=${encodeURIComponent(commentText)}`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-API-Key": EXCEL_API_KEY,
-            },
-          }
+          `${API_BASE_URL}/demo/prompt-comments/${currentPromptId}?demo_user_id=${demoUserId}&comment_text=${encodeURIComponent(commentText)}&user_name=${encodeURIComponent(userName)}`,
+          { method: "POST", headers: { "accept": "application/json", "X-API-Key": EXCEL_API_KEY } }
         );
         if (!response.ok) throw new Error('Failed to create comment');
         const data = await response.json();
-        const newComment: PromptComment = data.comment ?? data; // ✅ unwrap if wrapped
+        const newComment: PromptComment = data.data ?? data;
 
         setCommentsMap(prev => ({
           ...prev,
-          [currentPromptId]: [newComment, ...(prev[currentPromptId] || [])] // ✅ shows immediately
+          [currentPromptId]: [newComment, ...(prev[currentPromptId] || [])]
         }));
       }
 
@@ -1612,12 +1605,14 @@ useEffect(() => {
     if (!currentPromptId) return;
     try {
       setDeletingCommentId(commentId);
+      let demoUserId = '';
+      if (typeof window !== 'undefined') {
+        const s = sessionStorage.getItem('currentUserData');
+        if (s) { try { demoUserId = JSON.parse(s).userId || ''; } catch { /* */ } }
+      }
       const response = await fetch(
-        `${API_BASE_URL}/main-boards/boards/prompts/comments/${commentId}`,
-        {
-          method: "DELETE",
-          headers: { "X-API-Key": EXCEL_API_KEY },
-        }
+        `${API_BASE_URL}/demo/prompt-comments/${commentId}?demo_user_id=${demoUserId}`,
+        { method: "DELETE", headers: { "accept": "application/json", "X-API-Key": EXCEL_API_KEY } }
       );
       if (!response.ok) throw new Error('Failed to delete comment');
 
@@ -2582,14 +2577,14 @@ useEffect(() => {
   };
 
   const fetchData = useCallback(async () => {
-    if (!boardId || !user?.id) return;
+    if (!boardId) return;
 
     setLoading(true);
     try {
       const response = await axios.get(
         `${API_BASE_URL}/main-boards/boards/ai-documentation/board/${boardId}/all`,
         {
-          params: { user_id: user?.id },
+          params: { user_id: user?.id || '2' },
           headers: {
             "Content-Type": "application/json",
             "X-API-Key": EXCEL_API_KEY,
@@ -3053,22 +3048,18 @@ const SpeechRecognition =
 
       try {
         const response = await fetch(
-          `${API_BASE_URL}/main-boards/boards/prompts/boards/${boardId}`,
-          {
-            headers: {
-              "X-API-Key": EXCEL_API_KEY
-            },
-          }
+          `${API_BASE_URL}/demo/prompts/board/${mainBoardId}/${boardId}`,
+          { headers: { "accept": "application/json", "X-API-Key": EXCEL_API_KEY } }
         );
 
-        const endTime = performance.now(); // End timer
-        // console.log(`API Response Time: ${(endTime - startTime).toFixed(2)} ms`);
+        const endTime = performance.now();
 
         if (!response.ok) {
           throw new Error("Failed to fetch prompts");
         }
 
-        const data: Prompt[] = await response.json();
+        const json = await response.json();
+        const data: Prompt[] = json.data || [];
         // console.log("Fetched prompts data:", data);
 
         setPrompts(data);
@@ -3078,12 +3069,12 @@ const SpeechRecognition =
           data.map(async (p: Prompt) => {
             try {
               const res = await fetch(
-                `${API_BASE_URL}/main-boards/boards/prompts/${p.id}/comments?order_by=created_at&order_dir=DESC`,
-                { headers: { "Content-Type": "application/json", "X-API-Key": EXCEL_API_KEY } }
+                `${API_BASE_URL}/demo/prompt-comments/${p.id}?order_by=created_at&order_dir=ASC`,
+                { headers: { "accept": "application/json", "X-API-Key": EXCEL_API_KEY } }
               );
               if (!res.ok) return [p.id, []];
               const cData = await res.json();
-              const comments: PromptComment[] = Array.isArray(cData) ? cData : cData.comments || [];
+              const comments: PromptComment[] = cData.data || [];
               return [p.id, comments];
             } catch {
               return [p.id, []];
@@ -3944,10 +3935,10 @@ const SpeechRecognition =
                   { key: "repository", label: "Prompts Repository" },
 
                   // { key: "tally",        label: "Manage ETL" },
-
-                  { key: "master",       label: "Master Settings" },
-                  { key: "parameter",   label: "Parameter Settings" },
-                  { key: "timeline",     label: "Timeline Settings" },
+                  // { key: "master",       label: "Master Settings" },
+                  // { key: "parameter",    label: "Parameter Settings" },
+                  // { key: "timeline",     label: "Timeline Settings" },
+                  // { key: "kpi",          label: "KPI Updates" },
                 ].map((tab) => (
                   <button
                     key={tab.key}
@@ -3976,10 +3967,10 @@ const SpeechRecognition =
                       { key: "repository", label: "Prompts Repository" },
 
                       // { key: "tally",         label: "Manage ETL" },
-
-                      { key: "master",        label: "Master Settings" },
-                      { key: "parameter",    label: "Parameter Settings" },
-                      { key: "timeline",      label: "Timeline Settings" },
+                      // { key: "master",        label: "Master Settings" },
+                      // { key: "parameter",     label: "Parameter Settings" },
+                      // { key: "timeline",      label: "Timeline Settings" },
+                      // { key: "kpi",           label: "KPI Updates" },
                     ].find((t) => t.key === activeTab)?.label ?? "Select Tab"}
                   </span>
                   <span className="ml-2 text-gray-400 text-xs">{isMobileMenuOpen ? "▲" : "▼"}</span>
@@ -3995,10 +3986,9 @@ const SpeechRecognition =
                         { key: "repository", label: "Prompts Repository" },
 
                         // { key: "tally",         label: "Manage ETL" },
-
-                        { key: "master",        label: "Master Settings" },
-                        { key: "parameter",    label: "Parameter Settings" },
-                        { key: "timeline",      label: "Timeline Settings" },
+                        // { key: "master",        label: "Master Settings" },
+                        // { key: "parameter",     label: "Parameter Settings" },
+                        // { key: "timeline",      label: "Timeline Settings" },
                       ].map((tab) => (
                         <button
                           key={tab.key}
@@ -6807,6 +6797,10 @@ const SpeechRecognition =
 
         {activeTab === "tally" && (
           <TallySetting />
+        )}
+
+        {activeTab === "kpi" && (
+          <KpiUpdates />
         )}
 
       </div>
