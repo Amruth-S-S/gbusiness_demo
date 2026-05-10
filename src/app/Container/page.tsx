@@ -3946,10 +3946,10 @@ const SpeechRecognition =
 
                   // { key: "tally",        label: "Manage ETL" },
 
-                  { key: "master",       label: "Master Settings" },
-                  { key: "parameter",   label: "Parameter Settings" },
-                  { key: "timeline",     label: "Timeline Settings" },
-                  { key: "kpi",          label: "KPI Updates" },
+                  // { key: "master",       label: "Master Settings" },
+                  // { key: "parameter",   label: "Parameter Settings" },
+                  // { key: "timeline",     label: "Timeline Settings" },
+                  // { key: "kpi",          label: "KPI Updates" },
                 ].map((tab) => (
                   <button
                     key={tab.key}
@@ -3979,10 +3979,10 @@ const SpeechRecognition =
 
                       // { key: "tally",         label: "Manage ETL" },
 
-                      { key: "master",        label: "Master Settings" },
-                      { key: "parameter",    label: "Parameter Settings" },
-                      { key: "timeline",      label: "Timeline Settings" },
-                      { key: "kpi",           label: "KPI Updates" },
+                      // { key: "master",        label: "Master Settings" },
+                      // { key: "parameter",    label: "Parameter Settings" },
+                      // { key: "timeline",      label: "Timeline Settings" },
+                      // { key: "kpi",           label: "KPI Updates" },
                     ].find((t) => t.key === activeTab)?.label ?? "Select Tab"}
                   </span>
                   <span className="ml-2 text-gray-400 text-xs">{isMobileMenuOpen ? "▲" : "▼"}</span>
