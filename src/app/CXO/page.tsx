@@ -1,9 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from 'react';
-import styles from '../CXO/CXO.module.css';
-import { Bar, Line, Pie } from 'react-chartjs-2';
-import { ChartData } from 'chart.js';
 import axios from 'axios';
 import {
   Chart as ChartJS,
@@ -18,7 +15,8 @@ import {
 } from 'chart.js';
 import Spinner from '../components/Spinner';
 import { useRouter } from 'next/navigation';
-import { Menu, X, Settings, BarChart2, FileText, PieChart, TrendingUp, Database, Users, LayoutDashboard, BookOpen, Mic, Play, ChevronRight } from 'lucide-react';
+import { Menu, X, Settings, BarChart2, FileText, PieChart, TrendingUp, Database, Users, LayoutDashboard, BookOpen, Play, ChevronRight } from 'lucide-react';
+import KPIDashboard from '../Dashboard/page';
 import Image from 'next/image';
 import loginImage from '../assets/logo.jpg';
 import { FiMic } from "react-icons/fi";
@@ -77,17 +75,17 @@ export default function CXO() {
   const [error, setError] = useState<string | null>(null);
   const [boardCheckLoading, setBoardCheckLoading] = useState<string | null>(null);
   const [noPromptsBoard, setNoPromptsBoard] = useState<string | null>(null);
-  const [currentPromptIndex, setCurrentPromptIndex] = useState(0);
-  const [selectedPrompt, setSelectedPrompt] = useState<Prompt | null>(null);
+  const [, setCurrentPromptIndex] = useState(0);
   const [newPromptName, setNewPromptName] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [activeTab, setActiveTab] = useState("prompts");
+  const [cxoView, setCxoView] = useState<"home" | "dashboard">("dashboard");
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [, setShowCharts] = useState(false);
   const [isRunClicked, setIsRunClicked] = useState(false);
   const router = useRouter();
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [orgLogoUrl, setOrgLogoUrl] = useState<string | null>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -135,7 +133,7 @@ export default function CXO() {
   const EXCEL_API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [isListening, setIsListening] = useState(false);
+  const [, setIsListening] = useState(false);
   
   const handleVoiceInput = () => {
   const SpeechRecognition =
@@ -353,7 +351,6 @@ export default function CXO() {
     router.push('/Login');
   };
 
-  const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
   const toggleMobileMenu = () => setIsMobileMenuOpen(!isMobileMenuOpen);
 
   const handleRePrompt = async () => {
@@ -499,20 +496,62 @@ export default function CXO() {
   return (
     <div className="flex h-screen overflow-hidden bg-gray-100">
 
-      {/* Sidebar with logo */}
-     <div className="hidden md:flex flex-col items-start w-28 bg-gray-200 flex-shrink-0 pt-2 pb-4 gap-1 px-2">
-  <div className="w-full h-12 flex items-center justify-center">
-    {orgLogoUrl ? (
-      <img
-        src={orgLogoUrl}
-        alt="Logo"
-        className="max-h-10 object-contain"
-      />
-    ) : (
-      <div className="h-10 w-full bg-gray-300 animate-pulse rounded"></div>
-    )}
-  </div>
-</div>
+      {/* Sidebar */}
+      <div className={`hidden md:flex flex-col bg-white border-r border-gray-200 flex-shrink-0 transition-all duration-300 overflow-hidden ${isSidebarCollapsed ? 'w-14' : 'w-60'}`}>
+        {/* Logo + collapse button row */}
+        <div className="flex items-center justify-between px-3 py-3 border-b border-gray-100 flex-shrink-0">
+          {!isSidebarCollapsed && (
+            <div className="flex-1 flex items-center justify-start">
+              {orgLogoUrl ? (
+                <img src={orgLogoUrl} alt="Logo" className="max-h-9 object-contain" />
+              ) : (
+                <div className="h-9 w-24 bg-gray-200 animate-pulse rounded" />
+              )}
+            </div>
+          )}
+          <button
+            onClick={() => setIsSidebarCollapsed(v => !v)}
+            className="flex items-center justify-center w-7 h-7 rounded border border-gray-300 bg-white hover:bg-gray-100 transition-colors flex-shrink-0 ml-auto"
+          >
+            <ChevronRight className={`w-4 h-4 text-gray-600 transition-transform duration-300 ${isSidebarCollapsed ? '' : 'rotate-180'}`} />
+          </button>
+        </div>
+
+        {/* Nav items */}
+        <nav className="flex-1 py-3 px-2 flex flex-col gap-1">
+          <button
+            onClick={() => setCxoView("dashboard")}
+            className={`w-full flex items-center gap-3 px-2 py-2.5 rounded-lg transition-colors ${
+              cxoView === "dashboard" ? "bg-blue-100 text-blue-700" : "text-gray-600 hover:bg-gray-100"
+            }`}
+          >
+            <LayoutDashboard className="w-5 h-5 flex-shrink-0" />
+            {!isSidebarCollapsed && <span className="text-sm font-medium">Dashboard</span>}
+          </button>
+          <button
+            onClick={() => { setCxoView("home"); setSelectedMainBoardId(null); }}
+            className={`w-full flex items-center gap-3 px-2 py-2.5 rounded-lg transition-colors ${
+              cxoView === "home" ? "bg-blue-100 text-blue-700" : "text-gray-600 hover:bg-gray-100"
+            }`}
+          >
+            <BarChart2 className="w-5 h-5 flex-shrink-0" />
+            {!isSidebarCollapsed && <span className="text-sm font-medium">Main board</span>}
+          </button>
+        </nav>
+
+        {/* User info at bottom */}
+        {!isSidebarCollapsed && (
+          <div className="px-3 py-3 border-t border-gray-100 flex items-center gap-2">
+            <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0">
+              <span className="text-white text-xs font-bold">{userData.userName?.charAt(0).toUpperCase() || 'U'}</span>
+            </div>
+            <div className="overflow-hidden">
+              <p className="text-xs font-semibold text-gray-800 truncate">{userData.userName || 'User'}</p>
+              <p className="text-[10px] text-gray-500 truncate">{userData.email}</p>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Mobile sidebar overlay */}
       {isMobileMenuOpen && (
@@ -529,8 +568,19 @@ export default function CXO() {
             <button onClick={toggleMobileMenu} className="p-1.5"><X className="w-5 h-5" /></button>
           </div>
           <nav className="mt-3 space-y-1.5">
+            <button
+              onClick={() => { setCxoView("dashboard"); toggleMobileMenu(); }}
+              className={`w-full text-left py-2 px-3 text-sm rounded ${cxoView === "dashboard" ? "bg-blue-100 text-blue-700 font-medium" : "text-gray-700 hover:bg-gray-300"}`}
+            >
+              Dashboard
+            </button>
+            <button
+              onClick={() => { setCxoView("home"); setSelectedMainBoardId(null); toggleMobileMenu(); }}
+              className={`w-full text-left py-2 px-3 text-sm rounded ${cxoView === "home" ? "bg-blue-100 text-blue-700 font-medium" : "text-gray-700 hover:bg-gray-300"}`}
+            >
+              Main board
+            </button>
             <a href="/Dashboard" className="block py-2 px-3 text-blue-600 text-sm hover:bg-gray-300 rounded">Consultant</a>
-            <a href="/CXO" className="block py-2 px-3 text-blue-600 text-sm hover:bg-gray-300 rounded">CXO</a>
             <button onClick={handleLogout} className="w-full py-2 px-3 bg-blue-600 hover:bg-red-500 rounded text-white text-sm text-left">Logout</button>
           </nav>
         </div>
@@ -579,7 +629,9 @@ export default function CXO() {
 
         {/* Content */}
         <div className="flex-1 overflow-auto p-8">
-          {!selectedMainBoardId ? (
+          {cxoView === "dashboard" ? (
+            <KPIDashboard />
+          ) : !selectedMainBoardId ? (
             navItems.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-48 text-gray-400">
                 <p className="text-sm font-medium">No boards found.</p>
