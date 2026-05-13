@@ -3846,8 +3846,9 @@ const SpeechRecognition =
   const handleCloseModal = () => {
     setNewPromptName("");
     setEditPromptId(null);
-    setIsModalOpen(false); // Close the modal
-    setActiveTab("prompts"); // Set the active tab to "prompts"
+    setIsModalOpen(false);
+    setShowTopBtn(false);
+    setActiveTab("prompts");
     setRunResult(null); // Clear the result data
     setShowCharts(false); // Reset chart visibility
     setIsRunClicked(false); // Reset to hide the tabs
@@ -4074,6 +4075,7 @@ const SpeechRecognition =
                       setRunResult(null);
                       setNewPromptName('');
                       setResultTab('message');
+                      setShowTopBtn(false);
                       setIsModalOpen(true);
                     }}
                   >
@@ -6109,6 +6111,18 @@ const SpeechRecognition =
           </div>
         )}
 
+        {isModalOpen && showTopBtn && (
+          <button
+            onClick={() => {
+              const el = document.getElementById('run-prompt-scroll');
+              if (el) el.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            className="fixed bottom-6 right-6 z-[100] bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-full shadow-lg text-sm font-medium transition-colors"
+          >
+            ↑ Top
+          </button>
+        )}
+
         {isModalOpen && (
           <div className="fixed inset-0 bg-white z-50 flex flex-col overflow-hidden">
 
@@ -6152,7 +6166,7 @@ const SpeechRecognition =
             </div>
 
             {/* ── Scrollable Body ── */}
-            <div id="run-prompt-scroll" className="flex-1 overflow-y-auto px-4 py-3" style={{scrollbarWidth:'thin', scrollbarColor:'#313b96 #f1f1f1'}}>
+            <div id="run-prompt-scroll" className="flex-1 overflow-y-auto px-4 py-3" style={{scrollbarWidth:'thin', scrollbarColor:'#313b96 #f1f1f1'}} onScroll={(e) => setShowTopBtn(e.currentTarget.scrollTop > 200)}>
 
               {/* Textarea */}
               <textarea
@@ -6602,20 +6616,6 @@ const SpeechRecognition =
                 </div>
               )}
 
-              {/* ↑ Top button — only when there are results */}
-              {isRunClicked && runResult && (
-                <div className="flex justify-end mt-4 pb-2">
-                  <button
-                    onClick={() => {
-                      const el = document.getElementById('run-prompt-scroll');
-                      if (el) el.scrollTo({ top: 0, behavior: 'smooth' });
-                    }}
-                    className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2 rounded-full shadow transition-all"
-                  >
-                    ↑ Top
-                  </button>
-                </div>
-              )}
             </div>
           </div>
         )}
