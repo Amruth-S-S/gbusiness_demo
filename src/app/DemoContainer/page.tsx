@@ -246,6 +246,7 @@ function DemoContainerContent() {
   const [, setLoadingPromptPlay] = useState<string | null>(null);
   const [loadingPromptsRepository,] = useState(false);
   const [activeTab, setActiveTab] = useState("prompts"); // State to manage active tab
+  const [returnTab, setReturnTab] = useState("prompts"); // Tab to return to when closing result modal
   const [resultTab, setResultTab] = useState("message"); // Separate state for result modal tabs
   const [showTopBtn, setShowTopBtn] = useState(false);
   const [showRunTopBtn, setShowRunTopBtn] = useState(false);
@@ -3177,6 +3178,7 @@ const SpeechRecognition =
     setLoadingPromptPlay(prompt.id);
     const promptText = prompt.prompt_text;
     setSelectedPrompt(promptText);
+    setReturnTab(activeTab); // remember which tab triggered the play
 
     try {
       const data = await handleRunnPrompt(promptText, prompt.id); // ✅ use returned data
@@ -4574,14 +4576,14 @@ const SpeechRecognition =
                     <h3 className="text-base font-semibold">Demo Prompt</h3>
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => { setIsResultModalOpen(false); setShowTopBtn(false); }}
+                        onClick={() => { setIsResultModalOpen(false); setShowTopBtn(false); setActiveTab(returnTab); }}
                         className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-blue-600 border border-blue-400 rounded-md hover:bg-blue-50 transition-colors"
                       >
                         ← Back
                       </button>
                       <span
                         className="close-btn cursor-pointer text-xl text-gray-500 hover:text-gray-800 leading-none"
-                        onClick={() => { setIsResultModalOpen(false); setShowTopBtn(false); }}
+                        onClick={() => { setIsResultModalOpen(false); setShowTopBtn(false); setActiveTab(returnTab); }}
                       >
                         &times;
                       </span>
