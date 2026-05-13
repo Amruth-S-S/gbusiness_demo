@@ -13,6 +13,7 @@ import {
   Tooltip,
   Legend,
 } from 'chart.js';
+import { Bar, Line, Pie } from 'react-chartjs-2';
 import Spinner from '../components/Spinner';
 import { useRouter } from 'next/navigation';
 import { Menu, X, Settings, BarChart2, FileText, PieChart, TrendingUp, Database, Users, LayoutDashboard, BookOpen, Play, ChevronRight } from 'lucide-react';
@@ -101,13 +102,13 @@ export default function CXO() {
   interface ChartData {
     chart_type: string;
     data_format: ChartDataFormat;
-    insight: string[];
+    insight?: string[];
   }
 
   interface ChartDataFormat {
-    labels: string[];
+    labels?: string[];
     categories?: string[];
-    values: number[] | number[][];
+    values?: number[] | number[][];
     isStacked?: boolean;
   }
 
@@ -402,7 +403,7 @@ export default function CXO() {
 
   const getPieData = (chartData: ChartData) => {
     if (!chartData?.data_format) return { labels: [], datasets: [{ data: [], backgroundColor: [] }] };
-    const { labels, values } = chartData.data_format;
+    const { labels = [], values = [] } = chartData.data_format;
     return {
       labels,
       datasets: [{
@@ -416,12 +417,12 @@ export default function CXO() {
 
   const getChartData = (chartData: ChartData, type: "bar" | "line") => {
     if (!chartData?.data_format) return { labels: [], datasets: [] };
-    const { labels, categories, values } = chartData.data_format;
+    const { labels = [], categories, values = [] } = chartData.data_format;
     return {
       labels,
       datasets: (categories || []).map((cat, i) => ({
         label: cat,
-        data: (values as number[][])[i],
+        data: Array.isArray(values) && Array.isArray((values as number[][])[i]) ? (values as number[][])[i] : [],
         backgroundColor: type === 'bar'
           ? labels.map((_, idx) => CHART_COLORS[idx % CHART_COLORS.length])
           : CHART_COLORS[i % CHART_COLORS.length],
@@ -878,21 +879,21 @@ export default function CXO() {
                             <div key={i} className="w-full max-w-[400px] flex-1 bg-white rounded-xl shadow-sm p-4">
                               <h5 className="text-sm font-semibold text-center mb-2">Pie Chart</h5>
                               <div style={{ height: '350px' }}><Pie data={getPieData(chart)} options={{ maintainAspectRatio: false, plugins: { legend: { display: true, position: 'top' } } }} /></div>
-                              <div className="mt-2 p-3 bg-gray-50 rounded text-xs"><ul className="list-disc list-inside">{chart.insight.map((ins, j) => <li key={j}>{ins}</li>)}</ul></div>
+                              {chart.insight && chart.insight.length > 0 && <div className="mt-2 p-3 bg-gray-50 rounded text-xs"><ul className="list-disc list-inside">{chart.insight.map((ins, j) => <li key={j}>{ins}</li>)}</ul></div>}
                             </div>
                           );
                           if (chart.chart_type === 'bar') return (
                             <div key={i} className="w-full max-w-[500px] flex-1 bg-white rounded-xl shadow-sm p-4">
                               <h5 className="text-sm font-semibold text-center mb-2">Bar Chart</h5>
                               <div style={{ height: '350px' }}><Bar data={getChartData(chart, 'bar')} options={{ maintainAspectRatio: false, plugins: { legend: { display: true, position: 'top' } }, scales: { y: { beginAtZero: true } } }} /></div>
-                              <div className="mt-2 p-3 bg-gray-50 rounded text-xs"><ul className="list-disc list-inside">{chart.insight.map((ins, j) => <li key={j}>{ins}</li>)}</ul></div>
+                              {chart.insight && chart.insight.length > 0 && <div className="mt-2 p-3 bg-gray-50 rounded text-xs"><ul className="list-disc list-inside">{chart.insight.map((ins, j) => <li key={j}>{ins}</li>)}</ul></div>}
                             </div>
                           );
                           if (chart.chart_type === 'line') return (
                             <div key={i} className="w-full max-w-[500px] flex-1 bg-white rounded-xl shadow-sm p-4">
                               <h5 className="text-sm font-semibold text-center mb-2">Line Chart</h5>
                               <div style={{ height: '350px' }}><Line data={getChartData(chart, 'line')} options={{ maintainAspectRatio: false, plugins: { legend: { display: true, position: 'top' } }, scales: { y: { beginAtZero: true } } }} /></div>
-                              <div className="mt-2 p-3 bg-gray-50 rounded text-xs"><ul className="list-disc list-inside">{chart.insight.map((ins, j) => <li key={j}>{ins}</li>)}</ul></div>
+                              {chart.insight && chart.insight.length > 0 && <div className="mt-2 p-3 bg-gray-50 rounded text-xs"><ul className="list-disc list-inside">{chart.insight.map((ins, j) => <li key={j}>{ins}</li>)}</ul></div>}
                             </div>
                           );
                           return null;
