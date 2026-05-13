@@ -38,7 +38,7 @@ import styles from "../CXO/CXO.module.css";
 import ExcelTableComponent from "../components/ExcelTableComponent";
 import TimelineSettings from "../components/TimelineSettings";
 import ParameterSettings from "../components/ParameterSettings";
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import TallySetting from "../components/TallySetting";
 import ManageParameterSetting from "../components/Manageparametersetting";
 import KpiUpdates from "../components/KpiUpdates";
@@ -169,6 +169,7 @@ interface PromptComment {
 
 function DemoContainerContent() {
    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+  const router = useRouter();
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const boardId = searchParams.get("board_id");
@@ -421,6 +422,12 @@ const fetchParamFilterStatuses = async () => {
     setAnyFilterEnabled(Object.values(map).some(v => v === true));
   } catch {}
 };
+
+useEffect(() => {
+  if (typeof window !== 'undefined' && !sessionStorage.getItem('currentUserData')) {
+    router.replace('/Login');
+  }
+}, []);
 
 useEffect(() => {
   if (boardId) {

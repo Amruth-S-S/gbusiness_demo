@@ -194,6 +194,12 @@ export default function CXO() {
     (p.user_name && p.user_name.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !sessionStorage.getItem('currentUserData')) {
+      router.replace('/Login');
+    }
+  }, []);
+
   useEffect(() => { setIsMounted(true); }, []);
 
   useEffect(() => {
@@ -348,7 +354,7 @@ export default function CXO() {
       sessionStorage.removeItem('currentUserData');
       ['loggedInUserEmail','loggedInUserId','loggedInUserRole','loggedInUserName','client_user_id'].forEach(k => localStorage.removeItem(k));
     }
-    router.push('/Login');
+    router.replace('/Login');
   };
 
   const toggleMobileMenu = () => setIsMobileMenuOpen(!isMobileMenuOpen);

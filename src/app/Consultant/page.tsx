@@ -46,7 +46,7 @@ export default function Page() {
 
     const handleLogout = () => {
         sessionStorage.clear();
-        router.push('/');
+        router.replace('/');
         setShowMobileMenu(false);
     };
 
