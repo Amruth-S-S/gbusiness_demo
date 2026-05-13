@@ -328,6 +328,9 @@ export default function CXO() {
   const handleBoardClick = async (id: string) => {
     setBoardCheckLoading(id);
     setNoPromptsBoard(null);
+    setRunResult(null);
+    setNewPromptName('');
+    setIsRunClicked(false);
     try {
       const res = await fetch(`${API_BASE_URL}/main-boards/boards/prompts/boards/${id}`, { headers: { "X-API-Key": EXCEL_API_KEY } });
       if (!res.ok) { setNoPromptsBoard(id); return; }
@@ -343,7 +346,7 @@ export default function CXO() {
       setBoardCheckLoading(null);
     }
   };
-  const handleCloseBoardModal = () => { setShowBoardModal(false); setSelectedBoardId(null); setActiveTab("prompts"); setSelectedPrompt(null); setNewPromptName(''); setIsRunClicked(false); };
+  const handleCloseBoardModal = () => { setShowBoardModal(false); setSelectedBoardId(null); setActiveTab("prompts"); setSelectedPrompt(null); setNewPromptName(''); setIsRunClicked(false); setRunResult(null); };
   const handleViewPromptsClick = () => setShowPromptsModal(true);
   const handleClosePromptsModal = () => { setShowPromptsModal(false); setCurrentPromptIndex(0); setSearchTerm(''); };
   const handlePromptClick = (prompt: Prompt) => { setNewPromptName(prompt.prompt_text); setShowPromptsModal(false); textareaRef.current?.focus(); };
@@ -850,7 +853,8 @@ export default function CXO() {
                         {runResult?.message?.length > 0 ? <p>{runResult.message[0]}</p> : <p className="text-gray-400">No message found.</p>}
                       </div>
                     )}
-                    {activeTab === 'table' && runResult.table?.columns?.length > 0 && (
+                    {activeTab === 'table' && (
+                      runResult.table?.columns?.length > 0 ? (
                       <div className="border border-gray-200 rounded-xl bg-white shadow-sm overflow-auto" style={{ maxHeight: 'calc(100vh - 260px)', scrollbarWidth: 'thin', scrollbarColor: '#313b96 #f1f1f1' }}>
                         <table className="min-w-full table-auto text-sm whitespace-nowrap border-collapse">
                           <thead style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#f3f4f6' }}>
@@ -871,34 +875,41 @@ export default function CXO() {
                           </tbody>
                         </table>
                       </div>
+                      ) : (
+                        <div className="text-sm text-gray-400 p-4 bg-white rounded-xl shadow-sm">No table data found.</div>
+                      )
                     )}
-                    {activeTab === 'charts' && runResult.charts && (
-                      <div className="flex flex-wrap justify-center gap-6">
-                        {runResult.charts.map((chart: ChartData, i: number) => {
-                          if (chart.chart_type === 'pie') return (
-                            <div key={i} className="w-full max-w-[400px] flex-1 bg-white rounded-xl shadow-sm p-4">
-                              <h5 className="text-sm font-semibold text-center mb-2">Pie Chart</h5>
-                              <div style={{ height: '350px' }}><Pie data={getPieData(chart)} options={{ maintainAspectRatio: false, plugins: { legend: { display: true, position: 'top' } } }} /></div>
-                              {chart.insight && chart.insight.length > 0 && <div className="mt-2 p-3 bg-gray-50 rounded text-xs"><ul className="list-disc list-inside">{chart.insight.map((ins, j) => <li key={j}>{ins}</li>)}</ul></div>}
-                            </div>
-                          );
-                          if (chart.chart_type === 'bar') return (
-                            <div key={i} className="w-full max-w-[500px] flex-1 bg-white rounded-xl shadow-sm p-4">
-                              <h5 className="text-sm font-semibold text-center mb-2">Bar Chart</h5>
-                              <div style={{ height: '350px' }}><Bar data={getChartData(chart, 'bar')} options={{ maintainAspectRatio: false, plugins: { legend: { display: true, position: 'top' } }, scales: { y: { beginAtZero: true } } }} /></div>
-                              {chart.insight && chart.insight.length > 0 && <div className="mt-2 p-3 bg-gray-50 rounded text-xs"><ul className="list-disc list-inside">{chart.insight.map((ins, j) => <li key={j}>{ins}</li>)}</ul></div>}
-                            </div>
-                          );
-                          if (chart.chart_type === 'line') return (
-                            <div key={i} className="w-full max-w-[500px] flex-1 bg-white rounded-xl shadow-sm p-4">
-                              <h5 className="text-sm font-semibold text-center mb-2">Line Chart</h5>
-                              <div style={{ height: '350px' }}><Line data={getChartData(chart, 'line')} options={{ maintainAspectRatio: false, plugins: { legend: { display: true, position: 'top' } }, scales: { y: { beginAtZero: true } } }} /></div>
-                              {chart.insight && chart.insight.length > 0 && <div className="mt-2 p-3 bg-gray-50 rounded text-xs"><ul className="list-disc list-inside">{chart.insight.map((ins, j) => <li key={j}>{ins}</li>)}</ul></div>}
-                            </div>
-                          );
-                          return null;
-                        })}
-                      </div>
+                    {activeTab === 'charts' && (
+                      runResult.charts && runResult.charts.length > 0 ? (
+                        <div className="flex flex-wrap justify-center gap-6">
+                          {runResult.charts.map((chart: ChartData, i: number) => {
+                            if (chart.chart_type === 'pie') return (
+                              <div key={i} className="w-full max-w-[400px] flex-1 bg-white rounded-xl shadow-sm p-4">
+                                <h5 className="text-sm font-semibold text-center mb-2">Pie Chart</h5>
+                                <div style={{ height: '350px' }}><Pie data={getPieData(chart)} options={{ maintainAspectRatio: false, plugins: { legend: { display: true, position: 'top' } } }} /></div>
+                                {chart.insight && chart.insight.length > 0 && <div className="mt-2 p-3 bg-gray-50 rounded text-xs"><ul className="list-disc list-inside">{chart.insight.map((ins, j) => <li key={j}>{ins}</li>)}</ul></div>}
+                              </div>
+                            );
+                            if (chart.chart_type === 'bar') return (
+                              <div key={i} className="w-full max-w-[500px] flex-1 bg-white rounded-xl shadow-sm p-4">
+                                <h5 className="text-sm font-semibold text-center mb-2">Bar Chart</h5>
+                                <div style={{ height: '350px' }}><Bar data={getChartData(chart, 'bar')} options={{ maintainAspectRatio: false, plugins: { legend: { display: true, position: 'top' } }, scales: { y: { beginAtZero: true } } }} /></div>
+                                {chart.insight && chart.insight.length > 0 && <div className="mt-2 p-3 bg-gray-50 rounded text-xs"><ul className="list-disc list-inside">{chart.insight.map((ins, j) => <li key={j}>{ins}</li>)}</ul></div>}
+                              </div>
+                            );
+                            if (chart.chart_type === 'line') return (
+                              <div key={i} className="w-full max-w-[500px] flex-1 bg-white rounded-xl shadow-sm p-4">
+                                <h5 className="text-sm font-semibold text-center mb-2">Line Chart</h5>
+                                <div style={{ height: '350px' }}><Line data={getChartData(chart, 'line')} options={{ maintainAspectRatio: false, plugins: { legend: { display: true, position: 'top' } }, scales: { y: { beginAtZero: true } } }} /></div>
+                                {chart.insight && chart.insight.length > 0 && <div className="mt-2 p-3 bg-gray-50 rounded text-xs"><ul className="list-disc list-inside">{chart.insight.map((ins, j) => <li key={j}>{ins}</li>)}</ul></div>}
+                              </div>
+                            );
+                            return null;
+                          })}
+                        </div>
+                      ) : (
+                        <div className="text-sm text-gray-400 p-4 bg-white rounded-xl shadow-sm">No charts found.</div>
+                      )
                     )}
                   </div>
                 </div>
