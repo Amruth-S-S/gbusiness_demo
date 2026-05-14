@@ -1315,7 +1315,7 @@ useEffect(() => {
       const formData = new FormData();
       formData.append('file', pptBlob, 'DataAnalysisReport.pptx');
       formData.append('email', emailData.email);
-      formData.append('user_id', '0');
+      formData.append('user_id', user.id || '0');
       formData.append('report_type', includeTable ? 'complete' : 'standard');
       formData.append('file_name', 'DataAnalysisReport.pptx');
       formData.append('subject', emailData.subject || 'Your GBusiness AI Report');
@@ -2599,14 +2599,14 @@ useEffect(() => {
   };
 
   const fetchData = useCallback(async () => {
-    if (!boardId || !user?.id) return;
+    if (!boardId) return;
 
     setLoading(true);
     try {
       const response = await axios.get(
         `${API_BASE_URL}/main-boards/boards/ai-documentation/board/${boardId}/all`,
         {
-          params: { user_id: user?.id },
+          params: { user_id: 2 },
           headers: {
             "Content-Type": "application/json",
             "X-API-Key": EXCEL_API_KEY,
@@ -2614,15 +2614,13 @@ useEffect(() => {
         }
       );
 
-      // console.log("Fetched Documentation:", response.data);
-      // API returns { board_id, board_name, sources: [...] }
       setData(response.data.sources || []);
     } catch (error) {
       console.error("Error fetching AI documentation:", error);
     } finally {
       setLoading(false);
     }
-  }, [boardId, user?.id]);
+  }, [boardId]);
 
   // 2️⃣ useEffect declared AFTER fetchData ✅
   useEffect(() => {
