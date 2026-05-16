@@ -35,7 +35,7 @@ export default function Page() {
     const [isMounted, setIsMounted] = useState(false);
 
     const goToConsultantScreen = () => {
-        router.push('/Dashboard');
+        router.push('/Container');
         setShowMobileMenu(false);
     };
 

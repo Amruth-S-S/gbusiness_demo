@@ -183,7 +183,7 @@ function DemoContainerContent() {
   sourceName: string | null;
   filteredVersion: string | null;
 }>>({});
-  const [promptOutputTypes, setPromptOutputTypes] = useState<Record<string, 'C' | 'T' | 'CT'>>({});
+  const [promptOutputTypes, setPromptOutputTypes] = useState<Record<string, string>>({});
   const [isDropdownOpenn, setIsDropdownOpenn] = useState<string | null>(null);
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [, setLoading] = useState(false);
@@ -3150,7 +3150,12 @@ const SpeechRecognition =
       if (promptId) {
   const hasCharts = (response.data.charts ?? []).length > 0;
   const hasTable = response.data.table?.columns?.length > 0;
-  const outputType = hasCharts && hasTable ? 'CT' : hasCharts ? 'C' : hasTable ? 'T' : null;
+  const hasMessage = (response.data.message?.length ?? 0) > 0;
+  const parts: string[] = [];
+  if (hasCharts) parts.push('C');
+  if (hasTable) parts.push('T');
+  if (hasMessage) parts.push('M');
+  const outputType = parts.length > 0 ? parts.join('') : null;
   if (outputType) {
     setPromptOutputTypes(prev => ({ ...prev, [promptId]: outputType }));
   }
@@ -3282,8 +3287,15 @@ const SpeechRecognition =
 
         const hasCharts = (response.data.charts ?? []).length > 0;
         const hasTable = response.data.table?.columns?.length > 0;
-        const hasMessage = response.data.message?.length > 0;
-        const outputType = hasCharts && hasTable ? 'CT' : hasCharts ? 'C' : hasTable ? 'T' : null;
+        const hasMessage = (response.data.message?.length ?? 0) > 0;
+        const parts2: string[] = [];
+        if (hasCharts) parts2.push('C');
+        if (hasTable) parts2.push('T');
+        if (hasMessage) parts2.push('M');
+        const outputType = parts2.length > 0 ? parts2.join('') : null;
+        if (outputType && editPromptId) {
+          setPromptOutputTypes(prev => ({ ...prev, [editPromptId]: outputType }));
+        }
         // Determine the default active tab
         if (hasCharts && hasTable) {
           setResultTab("charts");
@@ -3900,7 +3912,7 @@ const SpeechRecognition =
                 className="absolute right-0 mt-2 w-40 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50"
               >
                 <a
-                  href="/Dashboard"
+                  href="/Consultant"
                   className={`block px-4 py-2 text-sm ${location.pathname === '/Container' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-50'}`}
                 >
                   Consultant Role
@@ -4086,7 +4098,7 @@ const SpeechRecognition =
                     New Prompts +
                   </button>
 
-                  {prompts.length === 0 ? (
+                  {/* {prompts.length === 0 ? (
                     <label className="py-1.5 px-3 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors text-xs font-medium whitespace-nowrap cursor-pointer">
                       <input
                         type="file"
@@ -4108,7 +4120,7 @@ const SpeechRecognition =
                     >
                       Export Prompts
                     </button>
-                  )}
+                  )} */}
                 </div>
               </div>
             </div>
@@ -4190,11 +4202,14 @@ const SpeechRecognition =
     <div className="flex flex-col items-end gap-1">
       {outputType && (
         <div className="flex gap-0.5 shrink-0">
-          {(outputType === 'C' || outputType === 'CT') && (
+          {outputType.includes('C') && (
             <span className="w-4 h-4 rounded-full bg-purple-100 text-purple-700 text-[9px] font-bold flex items-center justify-center border border-purple-300" title="Chart">C</span>
           )}
-          {(outputType === 'T' || outputType === 'CT') && (
+          {outputType.includes('T') && (
             <span className="w-4 h-4 rounded-full bg-green-100 text-green-700 text-[9px] font-bold flex items-center justify-center border border-green-300" title="Table">T</span>
+          )}
+          {outputType.includes('M') && (
+            <span className="w-4 h-4 rounded-full bg-blue-100 text-blue-700 text-[9px] font-bold flex items-center justify-center border border-blue-300" title="Message">M</span>
           )}
         </div>
       )}
@@ -4294,7 +4309,7 @@ const SpeechRecognition =
         )}
 
         {/* Export Modal */}
-        {showExportModal && (
+        {/* {showExportModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
               <div className="flex justify-between items-center mb-4">
@@ -4335,7 +4350,7 @@ const SpeechRecognition =
               </div>
             </div>
           </div>
-        )}
+        )} */}
 
         {activeTab === "repository" && (
           <div className="w-full">
@@ -4375,46 +4390,53 @@ const SpeechRecognition =
               <div className="max-w-[1400px] mx-auto px-3 py-3">
                 {!isLoading && filteredRepositoryPrompts.length > 0 ? (
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 auto-rows-fr">
-                    {filteredRepositoryPrompts.map((prompt, index) => (
-                      <div
-                        key={prompt.id}
-                        className="prompt-card border rounded-lg shadow-sm p-3 bg-white transition-all duration-300 hover:shadow-md flex flex-col justify-between cursor-pointer"
-                        style={{ minHeight: '150px', maxWidth: '100%' }}
-                        onClick={() => handlePlayClick(prompt)}
-                      >
-                        {/* Prompt text */}
-                        <p
-                          className="text-xs font-semibold mb-2 flex-grow text-gray-800"
-                          style={{
-                            display: '-webkit-box',
-                            WebkitLineClamp: 3,
-                            WebkitBoxOrient: 'vertical',
-                            overflow: 'hidden',
-                            wordBreak: 'break-word',
-                            overflowWrap: 'break-word',
-                            lineHeight: '1.4'
-                          }}
-                          title={prompt.prompt_text}
+                    {filteredRepositoryPrompts.map((prompt, index) => {
+                      const repoOutputType = promptOutputTypes[prompt.id];
+                      return (
+                        <div
+                          key={prompt.id}
+                          className="prompt-card border rounded-lg shadow-sm p-3 bg-white transition-all duration-300 hover:shadow-md flex flex-col justify-between cursor-pointer"
+                          style={{ minHeight: '150px', maxWidth: '100%' }}
+                          onClick={() => handlePlayClick(prompt)}
                         >
-                          {index + 1}. &quot;{prompt.prompt_text}&quot;
-                        </p>
+                          {/* Prompt text */}
+                          <p
+                            className="text-xs font-semibold mb-2 flex-grow text-gray-800"
+                            style={{
+                              display: '-webkit-box',
+                              WebkitLineClamp: 3,
+                              WebkitBoxOrient: 'vertical',
+                              overflow: 'hidden',
+                              wordBreak: 'break-word',
+                              overflowWrap: 'break-word',
+                              lineHeight: '1.4'
+                            }}
+                            title={prompt.prompt_text}
+                          >
+                            {index + 1}. &quot;{prompt.prompt_text}&quot;
+                          </p>
 
-                        <div className="mt-auto">
-                          <hr className="my-1.5 border-t border-gray-100" />
-                          <div className="mt-2 text-xs space-y-1">
-                            {/* <p className="opacity-80">
-                              Dataset used: {prompt.filename}
-                            </p> */}
-                            <p className="opacity-90 truncate">
-                              Created By: {prompt.user_name && prompt.user_name !== "undefined" ? prompt.user_name : ""}
-                            </p>
-                            <p className="opacity-80">
-                              Updated: {new Date(prompt.updated_at).toLocaleDateString()}
-                            </p>
+                          <div className="mt-auto">
+                            <hr className="my-1.5 border-t border-gray-100" />
+                            <div className="mt-2 text-xs space-y-1">
+                              <p className="opacity-90 truncate">
+                                Created By: {prompt.user_name && prompt.user_name !== "undefined" ? prompt.user_name : ""}
+                              </p>
+                              <div className="flex items-center justify-between gap-1">
+                                <p className="opacity-80">Updated: {new Date(prompt.updated_at).toLocaleDateString()}</p>
+                                {repoOutputType && (
+                                  <div className="flex gap-0.5 shrink-0">
+                                    {repoOutputType.includes('C') && <span className="w-4 h-4 rounded-full bg-purple-100 text-purple-700 text-[9px] font-bold flex items-center justify-center border border-purple-300" title="Chart">C</span>}
+                                    {repoOutputType.includes('T') && <span className="w-4 h-4 rounded-full bg-green-100 text-green-700 text-[9px] font-bold flex items-center justify-center border border-green-300" title="Table">T</span>}
+                                    {repoOutputType.includes('M') && <span className="w-4 h-4 rounded-full bg-blue-100 text-blue-700 text-[9px] font-bold flex items-center justify-center border border-blue-300" title="Message">M</span>}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : !isLoading ? (
                   <div className="text-center py-8">
@@ -4523,8 +4545,8 @@ const SpeechRecognition =
                   </button>
                   <button
                     type="submit"
-                    disabled={commentSaving}
-                    className="px-3 py-1 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-40 min-w-[60px]"
+                    disabled={commentSaving || commentText.trim() === ''}
+                    className="px-3 py-1 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed min-w-[60px]"
                   >
                     {commentSaving
                       ? (editingCommentId !== null ? 'Updating...' : 'Saving...')
@@ -4570,10 +4592,10 @@ const SpeechRecognition =
           <div
             id="result-modal-scroll"
             className="fixed inset-0 z-50 bg-white overflow-y-auto"
-            style={{scrollbarWidth:'thin', scrollbarColor:'#313b96 #f1f1f1'}}
+            style={{scrollbarWidth:'auto', scrollbarColor:'#313b96 #f1f1f1'}}
             onScroll={(e) => setShowTopBtn(e.currentTarget.scrollTop > 200)}
           >
-            <div className="w-full p-4 relative max-w-screen-xl mx-auto">
+            <div className="w-full p-4 relative">
               <div className="result-modal">
                 <div className="result-modal-content">
                   {/* Header row */}
@@ -4608,15 +4630,28 @@ const SpeechRecognition =
                     {/* Tab buttons + Download Excel in one row */}
                     <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
                       <div className="tabs flex space-x-2">
-                        {['message', 'table', 'charts'].map((tab) => (
-                          <button
-                            key={tab}
-                            onClick={() => setResultTab(tab)}
-                            className={`px-3 py-1.5 text-sm font-medium rounded ${resultTab === tab ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
-                          >
-                            {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                          </button>
-                        ))}
+                        {['message', 'table', 'charts'].map((tab) => {
+                          const hasData =
+                            tab === 'message' ? (runResult?.message?.length ?? 0) > 0 :
+                            tab === 'table'   ? (runResult?.table?.columns?.length ?? 0) > 0 :
+                                                (runResult?.charts?.length ?? 0) > 0;
+                          return (
+                            <button
+                              key={tab}
+                              onClick={() => hasData && setResultTab(tab)}
+                              disabled={!hasData}
+                              className={`px-3 py-1.5 text-sm font-medium rounded transition-colors ${
+                                !hasData
+                                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed opacity-50'
+                                  : resultTab === tab
+                                    ? 'bg-blue-500 text-white'
+                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                              }`}
+                            >
+                              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                            </button>
+                          );
+                        })}
                       </div>
                       <div className="flex gap-2">
                         {resultTab === 'table' && runResult?.table && runResult.table.columns?.length > 0 && (
@@ -4659,14 +4694,14 @@ const SpeechRecognition =
                      {resultTab === 'table' && (
                         <div className="table-tab">
                           {runResult?.table && runResult.table.columns?.length > 0 ? (
-                            <div className="max-h-96 overflow-auto border border-gray-300 rounded" style={{scrollbarWidth:'thin', scrollbarColor:'#313b96 #f1f1f1'}}>
+                            <div className="max-h-[520px] overflow-auto border border-gray-300 rounded" style={{scrollbarWidth:'auto', scrollbarColor:'#313b96 #f1f1f1'}}>
                               <table style={{ tableLayout: 'fixed', borderCollapse: 'collapse', width: 'max-content', minWidth: '100%' }}>
                                 <thead className="bg-gray-100 sticky top-0 z-10">
                                   <tr>
                                     {runResult.table.columns.map((col, idx) => (
                                       <th
                                         key={`col-header-${idx}-${col}`}
-                                        style={{ width: colWidths[idx] || 150, minWidth: 60, position: 'relative', userSelect: 'none', boxSizing: 'border-box' }}
+                                        style={{ width: colWidths[idx] || 200, minWidth: 100, position: 'relative', userSelect: 'none', boxSizing: 'border-box' }}
                                         className="border-b border-r border-gray-300 text-left text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-200"
                                         onClick={() => handleColSort(idx)}
                                       >
@@ -4692,7 +4727,7 @@ const SpeechRecognition =
                                     sortedTableData.map((row, rowIdx) => (
                                       <tr key={rowIdx} className={rowIdx % 2 === 0 ? 'bg-white hover:bg-blue-50' : 'bg-gray-50 hover:bg-blue-50'}>
                                         {row.map((cell, cellIdx) => (
-                                          <td key={cellIdx} style={{ width: colWidths[cellIdx] || 150, maxWidth: colWidths[cellIdx] || 150, overflow: 'hidden', textOverflow: 'ellipsis', boxSizing: 'border-box', whiteSpace: 'nowrap' }} className="px-2 py-2 border-b border-r border-gray-100 text-sm text-gray-700">
+                                          <td key={cellIdx} style={{ width: colWidths[cellIdx] || 200, maxWidth: colWidths[cellIdx] || 200, overflow: 'hidden', textOverflow: 'ellipsis', boxSizing: 'border-box', whiteSpace: 'nowrap' }} className="px-2 py-2 border-b border-r border-gray-100 text-sm text-gray-700">
                                             {cell}
                                           </td>
                                         ))}
@@ -6182,7 +6217,8 @@ const SpeechRecognition =
               <div className="mt-2 flex flex-wrap justify-end gap-1.5">
                  <button
   onClick={handleVoiceInput}
-  className="px-3 py-1.5  bg-blue-600 text-white rounded hover:bg-blue-700 text-xs font-medium whitespace-nowrap"
+  title="Click to speak"
+  className={`px-3 py-1.5 text-white rounded text-xs font-medium whitespace-nowrap transition-colors ${isListening ? 'bg-green-500 hover:bg-green-600' : 'bg-blue-600 hover:bg-blue-700'}`}
 >
   <FiMic className="text-white text-lg" />
 </button>
@@ -6228,18 +6264,28 @@ const SpeechRecognition =
 
                   {/* All buttons in one single row */}
                   <div className="flex items-center gap-2 mb-2 w-full">
-                    {['message', 'table', 'charts'].map((tab) => (
-                      <button
-                        key={tab}
-                        onClick={() => setResultTab(tab)}
-                        className={`px-3 py-1 rounded text-xs font-medium transition-colors whitespace-nowrap ${resultTab === tab
-                          ? 'bg-blue-500 text-white'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    {['message', 'table', 'charts'].map((tab) => {
+                      const hasData =
+                        tab === 'message' ? (runResult?.message?.length ?? 0) > 0 :
+                        tab === 'table'   ? (runResult?.table?.columns?.length ?? 0) > 0 :
+                                            (runResult?.charts?.length ?? 0) > 0;
+                      return (
+                        <button
+                          key={tab}
+                          onClick={() => hasData && setResultTab(tab)}
+                          disabled={!hasData}
+                          className={`px-3 py-1 rounded text-xs font-medium transition-colors whitespace-nowrap ${
+                            !hasData
+                              ? 'bg-gray-100 text-gray-400 cursor-not-allowed opacity-50'
+                              : resultTab === tab
+                                ? 'bg-blue-500 text-white'
+                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                           }`}
-                      >
-                        {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                      </button>
-                    ))}
+                        >
+                          {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                        </button>
+                      );
+                    })}
                     <div className="ml-auto flex gap-2">
                       {resultTab === 'table' && runResult?.table && runResult.table.columns?.length > 0 && (
                         <button
@@ -6284,14 +6330,14 @@ const SpeechRecognition =
                  {resultTab === 'table' && (
                         <div className="table-tab">
                           {runResult?.table && runResult.table.columns?.length > 0 ? (
-                            <div className="overflow-auto max-h-96 border border-gray-300 rounded" style={{scrollbarWidth:'thin', scrollbarColor:'#313b96 #f1f1f1'}}>
+                            <div className="overflow-auto max-h-[520px] border border-gray-300 rounded" style={{scrollbarWidth:'auto', scrollbarColor:'#313b96 #f1f1f1'}}>
                               <table style={{ tableLayout: 'fixed', borderCollapse: 'collapse', width: 'max-content', minWidth: '100%' }}>
                                 <thead className="bg-gray-100 sticky top-0 z-10">
                                   <tr>
                                     {runResult.table.columns.map((col, idx) => (
                                       <th
                                         key={`col-header-${idx}-${col}`}
-                                        style={{ width: colWidths[idx] || 150, minWidth: 60, position: 'relative', userSelect: 'none', boxSizing: 'border-box' }}
+                                        style={{ width: colWidths[idx] || 200, minWidth: 100, position: 'relative', userSelect: 'none', boxSizing: 'border-box' }}
                                         className="border-b border-r border-gray-300 text-left text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-200"
                                         onClick={() => handleColSort(idx)}
                                       >
@@ -6317,7 +6363,7 @@ const SpeechRecognition =
                                     sortedTableData.map((row, rowIdx) => (
                                       <tr key={rowIdx} className={rowIdx % 2 === 0 ? 'bg-white hover:bg-blue-50' : 'bg-gray-50 hover:bg-blue-50'}>
                                         {row.map((cell, cellIdx) => (
-                                          <td key={cellIdx} style={{ width: colWidths[cellIdx] || 150, maxWidth: colWidths[cellIdx] || 150, overflow: 'hidden', textOverflow: 'ellipsis', boxSizing: 'border-box', whiteSpace: 'nowrap' }} className="px-2 py-2 border-b border-r border-gray-100 text-sm text-gray-700">
+                                          <td key={cellIdx} style={{ width: colWidths[cellIdx] || 200, maxWidth: colWidths[cellIdx] || 200, overflow: 'hidden', textOverflow: 'ellipsis', boxSizing: 'border-box', whiteSpace: 'nowrap' }} className="px-2 py-2 border-b border-r border-gray-100 text-sm text-gray-700">
                                             {cell}
                                           </td>
                                         ))}
@@ -6773,11 +6819,14 @@ const SpeechRecognition =
                             <span className="text-xs font-bold text-blue-600">{index + 1}.</span>
                             {outputType && (
                               <div className="flex gap-1">
-                                {(outputType === 'C' || outputType === 'CT') && (
+                                {outputType.includes('C') && (
                                   <span className="w-5 h-5 rounded-full bg-purple-100 text-purple-700 text-[10px] font-bold flex items-center justify-center border border-purple-300" title="Charts">C</span>
                                 )}
-                                {(outputType === 'T' || outputType === 'CT') && (
+                                {outputType.includes('T') && (
                                   <span className="w-5 h-5 rounded-full bg-green-50 text-green-700 text-[10px] font-bold flex items-center justify-center border border-green-300" title="Table">T</span>
+                                )}
+                                {outputType.includes('M') && (
+                                  <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold flex items-center justify-center border border-blue-300" title="Message">M</span>
                                 )}
                               </div>
                             )}

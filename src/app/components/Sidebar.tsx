@@ -1131,7 +1131,7 @@ const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassw
               <div className="mb-3 p-2 bg-blue-50 rounded-lg border border-blue-200">
                 <div className="flex justify-between items-center">
                   <p className="text-xs text-blue-800">
-                    <span className="font-medium">{filteredNavItems.length + filteredAdminItems.length + ("dashboard".includes(searchQuery.toLowerCase()) ? 1 : 0)}</span> results for "{searchQuery}"
+                    <span className="font-medium">{filteredNavItems.length + filteredAdminItems.length}</span> results for "{searchQuery}"
                   </p>
                   <button onClick={clearSearch} className="text-blue-600 hover:text-blue-800 text-xs font-medium hover:bg-blue-100 px-1.5 py-0.5 rounded">Clear</button>
                 </div>
@@ -1139,7 +1139,7 @@ const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassw
             )}
 
             {/* Dashboard link */}
-            <div className="space-y-0.5 mb-4">
+            {/* <div className="space-y-0.5 mb-4">
               {(!searchQuery.trim() || "dashboard".includes(searchQuery.toLowerCase())) && (
                 <Link href="/Dashboard" onClick={closeMobileMenu}
                   className="flex items-center p-2 rounded-lg cursor-pointer transition-all duration-200 group hover:bg-blue-700/40 hover:shadow-sm"
@@ -1153,7 +1153,7 @@ const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassw
                   )}
                 </Link>
               )}
-            </div>
+            </div> */}
 
             {/* Demo Reference dropdown */}
             {(!searchQuery.trim() || "demo reference".includes(searchQuery.toLowerCase())) && (

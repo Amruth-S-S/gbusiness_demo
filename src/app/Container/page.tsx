@@ -76,6 +76,7 @@ type RunResult = {
     columns: string[];
     data: string[][];
   };
+  charts?: unknown[];
   detail?: string;
 };
 
@@ -185,7 +186,7 @@ export default function Page() {
   sourceName: string | null;
   filteredVersion: string | null;
 }>>({});
-  const [promptOutputTypes, setPromptOutputTypes] = useState<Record<string, 'C' | 'T' | 'CT'>>({});
+  const [promptOutputTypes, setPromptOutputTypes] = useState<Record<string, string>>({});
   const [isDropdownOpenn, setIsDropdownOpenn] = useState<string | null>(null);
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [, setLoading] = useState(false);
@@ -354,6 +355,7 @@ export default function Page() {
 
 
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [filterStatusMap, setFilterStatusMap] = useState<Record<number, boolean>>({});
@@ -853,8 +855,9 @@ useEffect(() => {
     setShowExportModal(false);
   };
 
-  const handleImportPrompts = async () => {
-    if (!importFile) {
+  const handleImportPrompts = async (fileArg?: File) => {
+    const file = fileArg ?? importFile;
+    if (!file) {
       toast.error("Please select a file to import");
       return;
     }
@@ -867,11 +870,11 @@ useEffect(() => {
     setIsImporting(true);
 
     try {
-      const fileContent = await importFile.text();
+      const fileContent = await file.text();
       let promptsToImport: { prompt_text: string; prompt_title?: string }[] = [];
 
       // Parse based on file type
-      if (importFile.name.endsWith('.csv')) {
+      if (file.name.endsWith('.csv')) {
         // Parse CSV
         const lines = fileContent.split('\n').slice(1); // Skip header
         const parsed = lines
@@ -958,6 +961,7 @@ useEffect(() => {
 
       setIsImporting(false);
       setImportFile(null);
+      setShowImportModal(false);
 
       if (successCount > 0) {
         toast.success(`Successfully imported ${successCount} prompt${successCount > 1 ? 's' : ''}!`);
@@ -3152,7 +3156,12 @@ const SpeechRecognition =
       if (promptId) {
   const hasCharts = (response.data.charts ?? []).length > 0;
   const hasTable = response.data.table?.columns?.length > 0;
-  const outputType = hasCharts && hasTable ? 'CT' : hasCharts ? 'C' : hasTable ? 'T' : null;
+  const hasMessage = (response.data.message?.length ?? 0) > 0;
+  const parts: string[] = [];
+  if (hasCharts) parts.push('C');
+  if (hasTable) parts.push('T');
+  if (hasMessage) parts.push('M');
+  const outputType = parts.length > 0 ? parts.join('') : null;
   if (outputType) {
     setPromptOutputTypes(prev => ({ ...prev, [promptId]: outputType }));
   }
@@ -3299,8 +3308,15 @@ const SpeechRecognition =
 
         const hasCharts = (response.data.charts ?? []).length > 0;
         const hasTable = response.data.table?.columns?.length > 0;
-        const hasMessage = response.data.message?.length > 0;
-        const outputType = hasCharts && hasTable ? 'CT' : hasCharts ? 'C' : hasTable ? 'T' : null;
+        const hasMessage = (response.data.message?.length ?? 0) > 0;
+        const parts2: string[] = [];
+        if (hasCharts) parts2.push('C');
+        if (hasTable) parts2.push('T');
+        if (hasMessage) parts2.push('M');
+        const outputType = parts2.length > 0 ? parts2.join('') : null;
+        if (outputType && editPromptId) {
+          setPromptOutputTypes(prev => ({ ...prev, [editPromptId]: outputType }));
+        }
         // Determine the default active tab
         if (hasCharts && hasTable) {
           setResultTab("charts");
@@ -3685,6 +3701,17 @@ const SpeechRecognition =
           : [...prevPrompts, newPromptData]
       );
 
+      // Store output type badge for the saved prompt ID
+      const savedId = String(editPromptId || newPromptData.id || '');
+      if (savedId && runResult) {
+        const parts: string[] = [];
+        if ((runResult.charts ?? []).length > 0) parts.push('C');
+        if ((runResult.table?.columns?.length ?? 0) > 0) parts.push('T');
+        if ((runResult.message?.length ?? 0) > 0) parts.push('M');
+        const ot = parts.join('');
+        if (ot) setPromptOutputTypes(prev => ({ ...prev, [savedId]: ot }));
+      }
+
       // Close modal and reset state
       setIsModalOpen(false);
       setNewPromptName("");
@@ -3905,7 +3932,7 @@ const SpeechRecognition =
                 className="absolute right-0 mt-2 w-40 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50"
               >
                 <a
-                  href="/Dashboard"
+                  href="/Consultant"
                   className={`block px-4 py-2 text-sm ${location.pathname === '/Container' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-50'}`}
                 >
                   Consultant Role
@@ -4091,21 +4118,13 @@ const SpeechRecognition =
                     New Prompts +
                   </button>
 
-                  {prompts.length === 0 ? (
-                    <label className="py-1.5 px-3 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors text-xs font-medium whitespace-nowrap cursor-pointer">
-                      <input
-                        type="file"
-                        accept=".txt,.csv"
-                        onChange={(e) => {
-                          if (e.target.files && e.target.files.length > 0) {
-                            setImportFile(e.target.files[0]);
-                            handleImportPrompts();
-                          }
-                        }}
-                        className="hidden"
-                      />
-                      {isImporting ? 'Importing...' : 'Import Prompts'}
-                    </label>
+                  {/* {prompts.length === 0 ? (
+                    <button
+                      className="py-1.5 px-3 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors text-xs font-medium whitespace-nowrap"
+                      onClick={() => { setImportFile(null); setShowImportModal(true); }}
+                    >
+                      Import Prompts
+                    </button>
                   ) : (
                     <button
                       className="py-1.5 px-3 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors text-xs font-medium whitespace-nowrap"
@@ -4113,7 +4132,7 @@ const SpeechRecognition =
                     >
                       Export Prompts
                     </button>
-                  )}
+                  )} */}
                 </div>
               </div>
             </div>
@@ -4195,11 +4214,14 @@ const SpeechRecognition =
     <div className="flex flex-col items-end gap-1">
       {outputType && (
         <div className="flex gap-0.5 shrink-0">
-          {(outputType === 'C' || outputType === 'CT') && (
+          {outputType.includes('C') && (
             <span className="w-4 h-4 rounded-full bg-purple-100 text-purple-700 text-[9px] font-bold flex items-center justify-center border border-purple-300" title="Chart">C</span>
           )}
-          {(outputType === 'T' || outputType === 'CT') && (
+          {outputType.includes('T') && (
             <span className="w-4 h-4 rounded-full bg-green-100 text-green-700 text-[9px] font-bold flex items-center justify-center border border-green-300" title="Table">T</span>
+          )}
+          {outputType.includes('M') && (
+            <span className="w-4 h-4 rounded-full bg-blue-100 text-blue-700 text-[9px] font-bold flex items-center justify-center border border-blue-300" title="Message">M</span>
           )}
         </div>
       )}
@@ -4298,8 +4320,64 @@ const SpeechRecognition =
           </div>
         )}
 
+        {/* Import Modal */}
+        {/* {showImportModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-base font-semibold text-gray-800">Import Prompts</h3>
+                <button onClick={() => { setShowImportModal(false); setImportFile(null); }} className="text-gray-400 hover:text-gray-600">
+                  <FaTimes size={16} />
+                </button>
+              </div>
+
+              <p className="text-xs text-gray-500 mb-4">Select a <strong>.csv</strong> or <strong>.txt</strong> file exported from this app to import prompts into the current board.</p>
+
+              <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors mb-4">
+                <input
+                  type="file"
+                  accept=".csv,.txt"
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) setImportFile(e.target.files[0]);
+                  }}
+                />
+                {importFile ? (
+                  <div className="text-center px-3">
+                    <p className="text-sm font-medium text-green-600 break-all">{importFile.name}</p>
+                    <p className="text-xs text-gray-400 mt-1">{(importFile.size / 1024).toFixed(1)} KB — click to change</p>
+                  </div>
+                ) : (
+                  <div className="text-center">
+                    <svg className="w-8 h-8 text-gray-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                    </svg>
+                    <p className="text-xs text-gray-500">Click to select a <span className="font-semibold">.csv</span> or <span className="font-semibold">.txt</span> file</p>
+                  </div>
+                )}
+              </label>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => { setShowImportModal(false); setImportFile(null); }}
+                  className="flex-1 py-2 px-4 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 text-sm font-medium transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleImportPrompts(importFile ?? undefined)}
+                  disabled={!importFile || isImporting}
+                  className="flex-1 py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium transition-colors"
+                >
+                  {isImporting ? 'Importing...' : 'Import'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )} */}
+
         {/* Export Modal */}
-        {showExportModal && (
+        {/* {showExportModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
               <div className="flex justify-between items-center mb-4">
@@ -4340,7 +4418,7 @@ const SpeechRecognition =
               </div>
             </div>
           </div>
-        )}
+        )} */}
 
         {activeTab === "repository" && (
           <div className="w-full">
@@ -4407,15 +4485,23 @@ const SpeechRecognition =
                         <div className="mt-auto">
                           <hr className="my-1.5 border-t border-gray-100" />
                           <div className="mt-2 text-xs space-y-1">
-                            {/* <p className="opacity-80">
-                              Dataset used: {prompt.filename}
-                            </p> */}
                             <p className="opacity-90 truncate">
                               Created By: {prompt.user_name && prompt.user_name !== "undefined" ? prompt.user_name : ""}
                             </p>
-                            <p className="opacity-80">
-                              Updated: {new Date(prompt.updated_at).toLocaleDateString()}
-                            </p>
+                            <div className="flex items-center justify-between gap-1">
+                              <p className="opacity-80">Updated: {new Date(prompt.updated_at).toLocaleDateString()}</p>
+                              {(() => {
+                                const ot = promptOutputTypes[prompt.id];
+                                if (!ot) return null;
+                                return (
+                                  <div className="flex gap-0.5 shrink-0">
+                                    {ot.includes('C') && <span className="w-4 h-4 rounded-full bg-purple-100 text-purple-700 text-[9px] font-bold flex items-center justify-center border border-purple-300" title="Chart">C</span>}
+                                    {ot.includes('T') && <span className="w-4 h-4 rounded-full bg-green-100 text-green-700 text-[9px] font-bold flex items-center justify-center border border-green-300" title="Table">T</span>}
+                                    {ot.includes('M') && <span className="w-4 h-4 rounded-full bg-blue-100 text-blue-700 text-[9px] font-bold flex items-center justify-center border border-blue-300" title="Message">M</span>}
+                                  </div>
+                                );
+                              })()}
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -4528,8 +4614,8 @@ const SpeechRecognition =
                   </button>
                   <button
                     type="submit"
-                    disabled={commentSaving}
-                    className="px-3 py-1 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-40 min-w-[60px]"
+                    disabled={commentSaving || commentText.trim() === ''}
+                    className="px-3 py-1 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed min-w-[60px]"
                   >
                     {commentSaving
                       ? (editingCommentId !== null ? 'Updating...' : 'Saving...')
@@ -4565,7 +4651,7 @@ const SpeechRecognition =
             style={{scrollbarWidth:'auto', scrollbarColor:'#313b96 #f1f1f1'}}
             onScroll={(e) => setShowTopBtn((e.currentTarget.scrollTop > 200))}
           >
-            <div className="w-full p-4 relative max-w-screen-xl mx-auto">
+            <div className="w-full p-4 relative">
               <div className="result-modal">
                 <div className="result-modal-content">
                   {/* Header row */}
@@ -4606,15 +4692,28 @@ const SpeechRecognition =
                     {/* Tab buttons + Download Excel in one row */}
                     <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
                       <div className="tabs flex space-x-2">
-                        {['message', 'table', 'charts'].map((tab) => (
-                          <button
-                            key={tab}
-                            onClick={() => setResultTab(tab)}
-                            className={`px-3 py-1.5 text-sm rounded font-medium transition-colors ${resultTab === tab ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
-                          >
-                            {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                          </button>
-                        ))}
+                        {['message', 'table', 'charts'].map((tab) => {
+                          const hasData =
+                            tab === 'message' ? (runResult?.message?.length ?? 0) > 0 :
+                            tab === 'table'   ? (runResult?.table?.columns?.length ?? 0) > 0 :
+                                                (runResult?.charts?.length ?? 0) > 0;
+                          return (
+                            <button
+                              key={tab}
+                              onClick={() => hasData && setResultTab(tab)}
+                              disabled={!hasData}
+                              className={`px-3 py-1.5 text-sm rounded font-medium transition-colors ${
+                                !hasData
+                                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed opacity-50'
+                                  : resultTab === tab
+                                    ? 'bg-blue-500 text-white'
+                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                              }`}
+                            >
+                              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                            </button>
+                          );
+                        })}
                       </div>
                       <div className="flex gap-2">
                         {resultTab === 'table' && runResult?.table && runResult.table.columns?.length > 0 && (
@@ -4657,14 +4756,14 @@ const SpeechRecognition =
                      {resultTab === 'table' && (
                         <div className="table-tab">
                           {runResult?.table && runResult.table.columns?.length > 0 ? (
-                            <div className="max-h-96 overflow-auto border border-gray-300 rounded" style={{scrollbarWidth:'auto', scrollbarColor:'#313b96 #f1f1f1'}}>
+                            <div className="max-h-[520px] overflow-auto border border-gray-300 rounded" style={{scrollbarWidth:'auto', scrollbarColor:'#313b96 #f1f1f1'}}>
                               <table style={{ tableLayout: 'fixed', borderCollapse: 'collapse', width: 'max-content', minWidth: '100%' }}>
                                 <thead className="bg-gray-100 sticky top-0 z-10">
                                   <tr>
                                     {runResult.table.columns.map((col, idx) => (
                                       <th
                                         key={`col-header-${idx}-${col}`}
-                                        style={{ width: colWidths[idx] || 150, minWidth: 60, position: 'relative', userSelect: 'none', boxSizing: 'border-box' }}
+                                        style={{ width: colWidths[idx] || 200, minWidth: 100, position: 'relative', userSelect: 'none', boxSizing: 'border-box' }}
                                         className="border-b border-r border-gray-300 text-left text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-200"
                                         onClick={() => handleColSort(idx)}
                                       >
@@ -4690,7 +4789,7 @@ const SpeechRecognition =
                                     sortedTableData.map((row, rowIdx) => (
                                       <tr key={rowIdx} className={rowIdx % 2 === 0 ? 'bg-white hover:bg-blue-50' : 'bg-gray-50 hover:bg-blue-50'}>
                                         {row.map((cell, cellIdx) => (
-                                          <td key={cellIdx} style={{ width: colWidths[cellIdx] || 150, maxWidth: colWidths[cellIdx] || 150, overflow: 'hidden', textOverflow: 'ellipsis', boxSizing: 'border-box', whiteSpace: 'nowrap' }} className="px-2 py-2 border-b border-r border-gray-100 text-sm text-gray-700">
+                                          <td key={cellIdx} style={{ width: colWidths[cellIdx] || 200, maxWidth: colWidths[cellIdx] || 200, overflow: 'hidden', textOverflow: 'ellipsis', boxSizing: 'border-box', whiteSpace: 'nowrap' }} className="px-2 py-2 border-b border-r border-gray-100 text-sm text-gray-700">
                                             {cell}
                                           </td>
                                         ))}
@@ -6191,7 +6290,8 @@ const SpeechRecognition =
               <div className="mt-2 flex flex-wrap justify-end gap-1.5">
                  <button
   onClick={handleVoiceInput}
-  className="px-3 py-1.5  bg-blue-600 text-white rounded hover:bg-blue-700 text-xs font-medium whitespace-nowrap"
+  title="Click to speak"
+  className={`px-3 py-1.5 text-white rounded text-xs font-medium whitespace-nowrap transition-colors ${isListening ? 'bg-green-500 hover:bg-green-600' : 'bg-blue-600 hover:bg-blue-700'}`}
 >
   <FiMic className="text-white text-lg" />
 </button>
@@ -6237,18 +6337,28 @@ const SpeechRecognition =
 
                   {/* All buttons in one single row */}
                   <div className="flex items-center gap-2 mb-2 w-full">
-                    {['message', 'table', 'charts'].map((tab) => (
-                      <button
-                        key={tab}
-                        onClick={() => setResultTab(tab)}
-                        className={`px-3 py-1 rounded text-xs font-medium transition-colors whitespace-nowrap ${resultTab === tab
-                          ? 'bg-blue-500 text-white'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    {['message', 'table', 'charts'].map((tab) => {
+                      const hasData =
+                        tab === 'message' ? (runResult?.message?.length ?? 0) > 0 :
+                        tab === 'table'   ? (runResult?.table?.columns?.length ?? 0) > 0 :
+                                            (runResult?.charts?.length ?? 0) > 0;
+                      return (
+                        <button
+                          key={tab}
+                          onClick={() => hasData && setResultTab(tab)}
+                          disabled={!hasData}
+                          className={`px-3 py-1 rounded text-xs font-medium transition-colors whitespace-nowrap ${
+                            !hasData
+                              ? 'bg-gray-100 text-gray-400 cursor-not-allowed opacity-50'
+                              : resultTab === tab
+                                ? 'bg-blue-500 text-white'
+                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                           }`}
-                      >
-                        {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                      </button>
-                    ))}
+                        >
+                          {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                        </button>
+                      );
+                    })}
                     <div className="ml-auto flex gap-2">
                       {resultTab === 'table' && runResult?.table && runResult.table.columns?.length > 0 && (
                         <button
@@ -6326,7 +6436,7 @@ const SpeechRecognition =
                                     sortedTableData.map((row, rowIdx) => (
                                       <tr key={rowIdx} className={rowIdx % 2 === 0 ? 'bg-white hover:bg-blue-50' : 'bg-gray-50 hover:bg-blue-50'}>
                                         {row.map((cell, cellIdx) => (
-                                          <td key={cellIdx} style={{ width: colWidths[cellIdx] || 150, maxWidth: colWidths[cellIdx] || 150, overflow: 'hidden', textOverflow: 'ellipsis', boxSizing: 'border-box', whiteSpace: 'nowrap' }} className="px-2 py-2 border-b border-r border-gray-100 text-sm text-gray-700">
+                                          <td key={cellIdx} style={{ width: colWidths[cellIdx] || 200, maxWidth: colWidths[cellIdx] || 200, overflow: 'hidden', textOverflow: 'ellipsis', boxSizing: 'border-box', whiteSpace: 'nowrap' }} className="px-2 py-2 border-b border-r border-gray-100 text-sm text-gray-700">
                                             {cell}
                                           </td>
                                         ))}
@@ -6782,11 +6892,14 @@ const SpeechRecognition =
                             <span className="text-xs font-bold text-blue-600">{index + 1}.</span>
                             {outputType && (
                               <div className="flex gap-1">
-                                {(outputType === 'C' || outputType === 'CT') && (
+                                {outputType.includes('C') && (
                                   <span className="w-5 h-5 rounded-full bg-purple-100 text-purple-700 text-[10px] font-bold flex items-center justify-center border border-purple-300" title="Charts">C</span>
                                 )}
-                                {(outputType === 'T' || outputType === 'CT') && (
+                                {outputType.includes('T') && (
                                   <span className="w-5 h-5 rounded-full bg-green-50 text-green-700 text-[10px] font-bold flex items-center justify-center border border-green-300" title="Table">T</span>
+                                )}
+                                {outputType.includes('M') && (
+                                  <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold flex items-center justify-center border border-blue-300" title="Message">M</span>
                                 )}
                               </div>
                             )}
