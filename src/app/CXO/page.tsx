@@ -85,12 +85,13 @@ export default function CXO() {
   const [newPromptName, setNewPromptName] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [activeTab, setActiveTab] = useState("prompts");
-  const [cxoView, setCxoView] = useState<"home" | "dashboard">("dashboard");
+  const [cxoView, setCxoView] = useState<"home" | "dashboard">("home");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [, setShowCharts] = useState(false);
   const [isRunClicked, setIsRunClicked] = useState(false);
   const router = useRouter();
   const [showDropdown, setShowDropdown] = useState(false);
+  const [showBoardDropdown, setShowBoardDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [orgLogoUrl, setOrgLogoUrl] = useState<string | null>(null);
@@ -153,6 +154,7 @@ export default function CXO() {
   const [selectedDemoBoardId, setSelectedDemoBoardId] = useState<number | null>(null);
   const [demoBoardName, setDemoBoardName] = useState('');
   const [showDownloadModal, setShowDownloadModal] = useState(false);
+  const [homeSection, setHomeSection] = useState<"mainboard" | "demo" | null>(null);
 
   const handleVoiceInput = () => {
   const SpeechRecognition =
@@ -220,6 +222,12 @@ export default function CXO() {
   }, []);
 
   useEffect(() => { setIsMounted(true); }, []);
+
+  useEffect(() => {
+    if (!isMounted) return;
+    setIsDemoLoading(true);
+    Promise.all([fetchDemoMainBoards(), fetchDemoBoards()]).finally(() => setIsDemoLoading(false));
+  }, [isMounted]);
 
   useEffect(() => {
     if (!isMounted || typeof window === 'undefined') return;
@@ -404,6 +412,7 @@ export default function CXO() {
     setShowBoardModal(false); setSelectedBoardId(null); setActiveTab("prompts");
     setSelectedPrompt(null); setNewPromptName(''); setIsRunClicked(false); setRunResult(null);
     setIsDemoBoard(false); setSelectedDemoBoardId(null); setDemoBoardName('');
+    setShowBoardDropdown(false);
   };
   const handleViewPromptsClick = () => setShowPromptsModal(true);
   const handleClosePromptsModal = () => { setShowPromptsModal(false); setCurrentPromptIndex(0); setSearchTerm(''); };
@@ -437,7 +446,12 @@ export default function CXO() {
     const opening = !isDemoRefOpen;
     setIsDemoRefOpen(opening);
     setActiveDemoMainBoard(null);
-    if (opening) { setIsDemoLoading(true); Promise.all([fetchDemoMainBoards(), fetchDemoBoards()]).finally(() => setIsDemoLoading(false)); }
+    if (opening) {
+      setIsDemoLoading(true);
+      Promise.all([fetchDemoMainBoards(), fetchDemoBoards()]).finally(() => setIsDemoLoading(false));
+      setCxoView("home");
+      setHomeSection("demo");
+    }
   };
 
   const downloadExcel = () => {
@@ -700,6 +714,12 @@ export default function CXO() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-100">
+      <style>{`
+        .cxo-sidebar-nav::-webkit-scrollbar { width: 4px; }
+        .cxo-sidebar-nav::-webkit-scrollbar-track { background: #e5e7eb; border-radius: 4px; }
+        .cxo-sidebar-nav::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 4px; }
+        .cxo-sidebar-nav::-webkit-scrollbar-thumb:hover { background: #2563eb; }
+      `}</style>
 
       {/* Sidebar */}
       <div className={`hidden md:flex flex-col bg-white border-r border-gray-200 flex-shrink-0 transition-all duration-300 overflow-hidden ${isSidebarCollapsed ? 'w-14' : 'w-60'}`}>
@@ -736,107 +756,6 @@ export default function CXO() {
             </div>
           )}
 
-          {/* Dashboard */}
-          <button onClick={() => setCxoView("dashboard")}
-            className={`w-full flex items-center gap-3 px-2 py-2 rounded-lg transition-colors ${cxoView === "dashboard" ? "bg-blue-100 text-blue-700" : "text-gray-600 hover:bg-gray-100"}`}>
-            <LayoutDashboard className="w-4 h-4 flex-shrink-0" />
-            {!isSidebarCollapsed && <span className="text-xs font-medium">Dashboard</span>}
-          </button>
-
-          {/* Demo Reference */}
-          {!isSidebarCollapsed && (
-            <div className="mt-1">
-              <button onClick={toggleDemoRef}
-                className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg transition-colors ${isDemoRefOpen ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-100'}`}>
-                <ChevronRight className={`w-3.5 h-3.5 flex-shrink-0 transition-transform duration-200 ${isDemoRefOpen ? 'rotate-90' : ''}`} />
-                <BookOpen className="w-4 h-4 flex-shrink-0" />
-                <span className="text-xs font-medium">Demo Reference</span>
-              </button>
-              {isDemoRefOpen && (
-                <div className="ml-4 mt-1 space-y-0.5">
-                  {isDemoLoading ? (
-                    <div className="text-xs text-gray-400 px-2 py-1">Loading...</div>
-                  ) : demoMainBoards.length === 0 ? (
-                    <div className="text-xs text-gray-400 px-2 py-1">No demo boards found</div>
-                  ) : (
-                    demoMainBoards.map(mb => {
-                      const mbId = String(mb.id);
-                      const isActiveDemoMb = activeDemoMainBoard === mbId;
-                      const boardsForMb = demoBoards.filter(b => b.main_board_id === mb.id);
-                      return (
-                        <div key={mbId}>
-                          <button onClick={() => setActiveDemoMainBoard(prev => prev === mbId ? null : mbId)}
-                            className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors ${isActiveDemoMb ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-100'}`}>
-                            <ChevronRight className={`w-3 h-3 flex-shrink-0 transition-transform ${isActiveDemoMb ? 'rotate-90' : ''}`} />
-                            <span className="font-medium truncate">{mb.name}</span>
-                          </button>
-                          {isActiveDemoMb && (
-                            <div className="ml-5 space-y-0.5">
-                              {boardsForMb.map(board => (
-                                <button key={board.id}
-                                  onClick={() => { setCxoView("home"); handleDemoBoardClick(board.id, mb.id, board.name); }}
-                                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-left text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors">
-                                  <span className="truncate">{board.name}</span>
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Main Boards tree */}
-          {!isSidebarCollapsed && (
-            <div className="mt-1">
-              {navItems.filter(item => !sidebarSearch || item.name.toLowerCase().includes(sidebarSearch.toLowerCase())).map(item => {
-                const mbId = String(item.main_board_id);
-                const isExpanded = activeMainBoardInSidebar === mbId;
-                const activeBoards = Object.keys(item.boards).filter(bid => item.boards[bid].is_active &&
-                  (!sidebarSearch || item.boards[bid].name.toLowerCase().includes(sidebarSearch.toLowerCase())));
-                return (
-                  <div key={mbId}>
-                    <button onClick={() => setActiveMainBoardInSidebar(prev => prev === mbId ? null : mbId)}
-                      className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg text-xs transition-colors ${isExpanded ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-100'}`}>
-                      <ChevronRight className={`w-3.5 h-3.5 flex-shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} />
-                      <BarChart2 className="w-4 h-4 flex-shrink-0" />
-                      <span className="font-medium truncate">{item.name}</span>
-                    </button>
-                    {(isExpanded || sidebarSearch) && (
-                      <div className="ml-5 space-y-0.5 pb-1">
-                        {activeBoards.map(bid => {
-                          const isChecking = boardCheckLoading === bid;
-                          const hasNoPrompts = noPromptsBoard === bid;
-                          return (
-                            <div key={bid}>
-                              <button
-                                onClick={() => { setCxoView("home"); handleBoardClick(bid); }}
-                                disabled={isChecking}
-                                className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-left transition-colors ${
-                                  hasNoPrompts ? 'text-red-500 bg-red-50' :
-                                  isChecking ? 'opacity-50 cursor-wait text-gray-700' :
-                                  'text-gray-700 hover:bg-blue-50 hover:text-blue-700'
-                                }`}>
-                                <span className="truncate">{item.boards[bid].name}</span>
-                                {isChecking && <div className="ml-auto animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600 flex-shrink-0" />}
-                              </button>
-                              {hasNoPrompts && (
-                                <p className="text-[10px] text-red-400 px-2 pb-1">No prompts available in this board</p>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
         </nav>
 
         {/* User info at bottom */}
@@ -869,16 +788,10 @@ export default function CXO() {
           </div>
           <nav className="mt-3 space-y-1.5">
             <button
-              onClick={() => { setCxoView("dashboard"); toggleMobileMenu(); }}
-              className={`w-full text-left py-2 px-3 text-sm rounded ${cxoView === "dashboard" ? "bg-blue-100 text-blue-700 font-medium" : "text-gray-700 hover:bg-gray-300"}`}
-            >
-              Dashboard
-            </button>
-            <button
               onClick={() => { setCxoView("home"); setSelectedMainBoardId(null); toggleMobileMenu(); }}
               className={`w-full text-left py-2 px-3 text-sm rounded ${cxoView === "home" ? "bg-blue-100 text-blue-700 font-medium" : "text-gray-700 hover:bg-gray-300"}`}
             >
-              Main board
+              Home
             </button>
             <a href="/Consultant" className="block py-2 px-3 text-blue-600 text-sm hover:bg-gray-300 rounded">Consultant</a>
             <button onClick={handleLogout} className="w-full py-2 px-3 bg-blue-600 hover:bg-red-500 rounded text-white text-sm text-left">Logout</button>
@@ -930,11 +843,154 @@ export default function CXO() {
         {/* Content */}
         <div className="flex-1 overflow-auto p-8">
           {cxoView === "dashboard" ? (
-            <KPIDashboard />
+            <>
+              <div className="mb-4">
+                <button onClick={() => setCxoView("home")}
+                  className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-blue-600 border border-blue-400 rounded-md hover:bg-blue-50 transition-colors">
+                  ← Back
+                </button>
+              </div>
+              <KPIDashboard />
+            </>
           ) : (
-            <div className="flex flex-col items-center justify-center h-64 text-gray-400">
-              <BarChart2 className="w-12 h-12 mb-3 text-gray-300" />
-              <p className="text-sm font-medium">Select a board from the sidebar to get started</p>
+            <div className="p-6">
+
+              {/* ── Sub-navigation: Mainboard boards ── */}
+              {selectedMainBoardId ? (
+                <>
+                  <div className="flex items-center gap-3 mb-5">
+                    <button onClick={() => setSelectedMainBoardId(null)}
+                      className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-blue-600 border border-blue-400 rounded-md hover:bg-blue-50 transition-colors">
+                      ← Back
+                    </button>
+                    <h2 className="text-sm font-bold text-gray-700">
+                      {navItems.find(i => i.main_board_id === selectedMainBoardId)?.name ?? "Boards"}
+                    </h2>
+                  </div>
+                  <div className="flex flex-row gap-4 overflow-x-auto pb-3" style={{ scrollbarWidth: 'auto', scrollbarColor: '#93c5fd #f1f1f1' }}>
+                    {Object.entries(navItems.find(i => i.main_board_id === selectedMainBoardId)?.boards ?? {})
+                      .filter(([, b]) => b.is_active)
+                      .map(([bid, board], idx) => {
+                        const style = cardIconStyles[idx % cardIconStyles.length];
+                        const isChecking = boardCheckLoading === bid;
+                        return (
+                          <button key={bid} onClick={() => handleBoardClick(bid)} disabled={isChecking}
+                            className="bg-white border border-gray-200 rounded-xl p-6 flex flex-col items-center gap-3 hover:shadow-md hover:border-blue-200 transition-all disabled:opacity-50 flex-shrink-0 w-44">
+                            <div className={`w-16 h-16 rounded-full ${style.bg} flex items-center justify-center`}>
+                              {isChecking ? <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" /> : <style.Icon className={`w-8 h-8 ${style.iconColor}`} />}
+                            </div>
+                            <span className={`text-sm font-semibold text-center ${style.textColor}`}>{board.name}</span>
+                          </button>
+                        );
+                      })}
+                  </div>
+                </>
+
+              ) : activeDemoMainBoard ? (
+                /* ── Sub-navigation: Demo boards ── */
+                <>
+                  <div className="flex items-center gap-3 mb-5">
+                    <button onClick={() => setActiveDemoMainBoard(null)}
+                      className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-blue-600 border border-blue-400 rounded-md hover:bg-blue-50 transition-colors">
+                      ← Back
+                    </button>
+                    <h2 className="text-sm font-bold text-gray-700">
+                      {demoMainBoards.find(m => String(m.id) === activeDemoMainBoard)?.name ?? "Demo Boards"}
+                    </h2>
+                  </div>
+                  <div className="flex flex-row gap-4 overflow-x-auto pb-3" style={{ scrollbarWidth: 'auto', scrollbarColor: '#93c5fd #f1f1f1' }}>
+                    {demoBoards.filter(b => b.main_board_id === parseInt(activeDemoMainBoard)).map((board, idx) => {
+                      const style = cardIconStyles[idx % cardIconStyles.length];
+                      const isChecking = boardCheckLoading === String(board.id);
+                      return (
+                        <button key={board.id}
+                          onClick={() => handleDemoBoardClick(board.id, parseInt(activeDemoMainBoard), board.name)}
+                          disabled={isChecking}
+                          className="bg-white border border-gray-200 rounded-xl p-6 flex flex-col items-center gap-3 hover:shadow-md hover:border-blue-200 transition-all disabled:opacity-50 flex-shrink-0 w-44">
+                          <div className={`w-16 h-16 rounded-full ${style.bg} flex items-center justify-center`}>
+                            {isChecking ? <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" /> : <style.Icon className={`w-8 h-8 ${style.iconColor}`} />}
+                          </div>
+                          <span className={`text-sm font-semibold text-center ${style.textColor}`}>{board.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+
+              ) : (
+                /* ── Combined home: Dashboard + Demo Reference + Mainboards side by side ── */
+                <div className="flex gap-10 overflow-x-auto pb-3" style={{ scrollbarWidth: 'auto', scrollbarColor: '#93c5fd #f1f1f1' }}>
+
+                  {/* Dashboard tile */}
+                  <div className="flex-shrink-0">
+                    <h2 className="text-sm font-bold text-gray-700 mb-4">Dashboard</h2>
+                    <div className="flex flex-row gap-4">
+                      <button
+                        onClick={() => setCxoView("dashboard")}
+                        className="bg-white border border-gray-200 rounded-xl p-6 flex flex-col items-center gap-3 hover:shadow-md hover:border-teal-200 transition-all flex-shrink-0 w-44"
+                      >
+                        <div className="w-16 h-16 rounded-full bg-teal-50 flex items-center justify-center">
+                          <LayoutDashboard className="w-8 h-8 text-teal-400" />
+                        </div>
+                        <span className="text-sm font-semibold text-center text-teal-500">Dashboard</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Divider */}
+                  <div className="w-px bg-gray-200 flex-shrink-0 self-stretch" />
+
+                  {/* Demo Reference column */}
+                  <div className="flex-shrink-0">
+                    <h2 className="text-sm font-bold text-gray-700 mb-4">Demo Reference</h2>
+                    {isDemoLoading ? (
+                      <div className="text-xs text-gray-400">Loading...</div>
+                    ) : (
+                      <div className="flex flex-row gap-4">
+                        {demoMainBoards.map((mb, idx) => {
+                          const style = cardIconStyles[(idx + 4) % cardIconStyles.length];
+                          return (
+                            <button key={mb.id} onClick={() => setActiveDemoMainBoard(String(mb.id))}
+                              className="bg-white border border-gray-200 rounded-xl p-6 flex flex-col items-center gap-3 hover:shadow-md hover:border-blue-200 transition-all flex-shrink-0 w-44">
+                              <div className={`w-16 h-16 rounded-full ${style.bg} flex items-center justify-center`}>
+                                <style.Icon className={`w-8 h-8 ${style.iconColor}`} />
+                              </div>
+                              <span className={`text-sm font-semibold text-center ${style.textColor}`}>{mb.name}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Divider */}
+                  <div className="w-px bg-gray-200 flex-shrink-0 self-stretch" />
+
+                  {/* Mainboards column */}
+                  <div className="flex-shrink-0">
+                    <h2 className="text-sm font-bold text-gray-700 mb-4">Mainboards</h2>
+                    {loading ? (
+                      <div className="text-xs text-gray-400">Loading...</div>
+                    ) : (
+                      <div className="flex flex-row gap-4">
+                        {navItems.map((item, idx) => {
+                          const style = cardIconStyles[idx % cardIconStyles.length];
+                          return (
+                            <button key={item.main_board_id} onClick={() => setSelectedMainBoardId(item.main_board_id)}
+                              className="bg-white border border-gray-200 rounded-xl p-6 flex flex-col items-center gap-3 hover:shadow-md hover:border-blue-200 transition-all flex-shrink-0 w-44">
+                              <div className={`w-16 h-16 rounded-full ${style.bg} flex items-center justify-center`}>
+                                <style.Icon className={`w-8 h-8 ${style.iconColor}`} />
+                              </div>
+                              <span className={`text-sm font-semibold text-center ${style.textColor}`}>{item.name}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -974,12 +1030,12 @@ export default function CXO() {
                   <p className="text-xs text-gray-500 leading-tight">{userData.email}</p>
                 </div>
                 <div className="relative">
-                  <button onClick={() => setShowDropdown(v => !v)}
+                  <button onClick={() => setShowBoardDropdown(v => !v)}
                     className="w-9 h-9 rounded-full bg-blue-600 hover:bg-blue-700 flex items-center justify-center">
                     <Settings className="w-4 h-4 text-white" />
                   </button>
-                  {showDropdown && (
-                    <div onMouseDown={e => e.stopPropagation()} className="absolute right-0 top-full mt-1.5 bg-white shadow-lg rounded-md border border-gray-100 min-w-[120px] z-50">
+                  {showBoardDropdown && (
+                    <div className="absolute right-0 top-full mt-1.5 bg-white shadow-lg rounded-md border border-gray-100 min-w-[120px] z-[200]">
                       <button onClick={handleLogout} className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 rounded-md">Logout</button>
                     </div>
                   )}
@@ -1111,7 +1167,7 @@ export default function CXO() {
                     )}
                     {activeTab === 'table' && (
                       runResult.table?.columns?.length > 0 ? (
-                      <div className="border border-gray-200 rounded-xl bg-white shadow-sm overflow-auto" style={{ maxHeight: 'calc(100vh - 260px)', scrollbarWidth: 'auto', scrollbarColor: '#313b96 #f1f1f1' }}>
+                      <div className="border border-gray-200 rounded-xl bg-white shadow-sm overflow-auto" style={{ maxHeight: 'calc(100vh - 260px)', scrollbarWidth: 'auto', scrollbarColor: '#93c5fd #f1f1f1' }}>
                         <table className="min-w-full table-auto text-sm whitespace-nowrap border-collapse">
                           <thead style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#f3f4f6' }}>
                             <tr>
@@ -1182,10 +1238,10 @@ export default function CXO() {
             </div>
           </div>
 
-          {/* View Prompts — fixed to right edge, vertical when result shown */}
+          {/* View Prompts — fixed to right edge, always horizontal */}
           <button
             onClick={handleViewPromptsClick}
-            className={`fixed right-0 top-1/2 -translate-y-1/2 z-[60] bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-2xl transition-all ${isRunClicked && runResult ? 'px-2 py-6 [writing-mode:vertical-rl] rotate-180' : 'px-4 py-2.5'} rounded-l-lg`}
+            className="fixed right-0 top-1/2 -translate-y-1/2 z-[60] bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-2xl transition-all px-4 py-2.5 rounded-l-lg whitespace-nowrap"
           >
             View Prompts
           </button>
